@@ -1,0 +1,124 @@
+.App {
+  text-align: center;
+}
+
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear;
+  }
+}
+
+.App-header {
+  background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+@keyframes App-logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #121212; /* Fundal negru minimalist */
+  color: #ECECEC;          /* Text alb-gri pentru contrast */
+  font-family: 'Roboto', Arial, sans-serif;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: #42A5F5;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  cursor: pointer;
+  font-size: 16px;
+  font-family: inherit;
+  transition: background-color 0.3s, color 0.3s, box-shadow 0.3s ease;
+}
+
+/* Stilurile butonului */
+button.primary {
+  background-color: #42A5F5;
+  color: #ECECEC;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 25px;
+}
+
+button.primary:hover {
+  background-color: #64BDF5;
+  box-shadow: 0 4px 8px rgba(66, 165, 245, 0.4);
+}
+
+/* Formulare */
+input {
+  background-color: #1F1F1F;
+  color: #ECECEC;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 16px;
+  width: 100%;
+}
+
+input:focus {
+  border-color: #42A5F5;
+  outline: none;
+  box-shadow: 0 0 4px #42A5F5;
+}
+
+/* Form Container */
+.form-container {
+  background-color: #1F1F1F;
+  border-radius: 12px;
+  padding: 20px;
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+h1, h2 {
+  font-weight: 700;
+}
+
+h1 {
+  font-size: 2rem;
+  margin-bottom: 10px;
+}
+
+h2 {
+  font-size: 1.5rem;
+  margin-bottom: 15px;
+}
