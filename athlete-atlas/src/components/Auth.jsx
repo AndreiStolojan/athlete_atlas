@@ -81,72 +81,76 @@ const Auth = () => {
     const [confirmPassword, setConfirmPassword] = useState("");
     const [isRegistering, setIsRegistering] = useState(true);
     const [error, setError] = useState(null);
-    const [success, setSuccess] = useState(""); // Starea pentru mesajele de succes
+    const [success, setSuccess] = useState("");
     const navigate = useNavigate();
 
     // Funcția pentru conectarea cu Google
     const handleGoogleSignIn = async () => {
-        setError(null); // Resetează erorile
-        setSuccess(""); // Resetează mesajele de succes
-
-        try {
-            const provider = new GoogleAuthProvider();
-            await setPersistence(auth, browserLocalPersistence); // Sesiunea persistă în browser
-
-            // Încercăm să ne conectăm cu Google folosind Popup
-            const result = await signInWithPopup(auth, provider);
-            const user = result.user;
-
-            // Verificare email validat (opțional, Google e validat implicit)
-            if (!user.email) {
-                throw new Error(
-                    "Email-ul asociat contului Google nu este validat. Contactați suportul."
-                );
-            }
-
-            setSuccess("Te-ai conectat cu succes folosind contul Google!");
-            navigate("/dashboard"); // Navigare spre dashboard
-        } catch (err) {
-            console.error(err);
-
-            if (err.code === "auth/popup-blocked") {
-                // Fall back către metoda Redirect dacă Popup e blocat
-                try {
-                    const provider = new GoogleAuthProvider();
-                    await signInWithRedirect(auth, provider);
-                } catch (redirectError) {
-                    console.error(redirectError);
-                    setError(
-                        redirectError.message ||
-                        "Autentificarea cu Google nu a reușit. Încercați altă metodă."
-                    );
-                }
-            } else {
-                setError(
-                    err.message || "Conectarea cu Google a eșuat. Încercați din nou."
-                );
-            }
-        }
-    };
-
-    // Funcția de submit pentru email/parolă
-    const handleSubmit = async (e) => {
-        e.preventDefault(); // Previne refresh-ul paginii
         setError(null);
         setSuccess("");
 
         try {
-            await setPersistence(auth, browserLocalPersistence); // Persistă sesiunea
+            // Creăm instanța corectă a GoogleAuthProvider la începutul funcției
+            const googleProvider = new GoogleAuthProvider();
+
+            // Setăm parametrii pentru forțarea selectorului de conturi
+            googleProvider.setCustomParameters({
+                prompt: "select_account",
+            });
+
+            // Asigurăm persistența autentificării
+            await setPersistence(auth, browserLocalPersistence);
+
+            // Încercăm să realizăm conectarea prin popup
+            const result = await signInWithPopup(auth, googleProvider);
+            const user = result.user;
+
+            if (!user) {
+                throw new Error("Conectarea Google a eșuat.");
+            }
+
+            // Dacă autentificarea reușește
+            setSuccess("Te-ai conectat cu succes folosind contul Google!");
+            navigate("/dashboard");
+        } catch (err) {
+            console.error("Eroare la autentificare:", err);
+
+            if (err.code === "auth/popup-blocked") {
+                try {
+                    // Dacă pop-up-ul este blocat, fallback la signInWithRedirect
+                    const googleRedirectProvider = new GoogleAuthProvider();
+                    googleRedirectProvider.setCustomParameters({
+                        prompt: "select_account", // Setăm parametrii și aici
+                    });
+                    await signInWithRedirect(auth, googleRedirectProvider);
+                } catch (redirectError) {
+                    console.error("Eroare la fallback pentru redirect:", redirectError);
+                    setError(
+                        redirectError.message || "Autentificarea cu Google a eșuat complet."
+                    );
+                }
+            } else {
+                // Tratare alte erori
+                setError(err.message || "Conectarea cu Google a eșuat.");
+            }
+        }
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError(null);
+        setSuccess("");
+
+        try {
+            await setPersistence(auth, browserLocalPersistence);
 
             if (isRegistering) {
-                // Înregistrare
                 if (!email) throw new Error("Introduceți o adresă de email.");
                 if (password.length < 6)
-                    throw new Error("Parola trebuie să conțină cel puțin 6 caractere.");
+                    throw new Error("Parola trebuie să aibă cel puțin 6 caractere.");
                 if (password !== confirmPassword)
                     throw new Error("Parolele nu coincid.");
 
-                // Creează cont nou
                 const userCredential = await createUserWithEmailAndPassword(
                     auth,
                     email,
@@ -154,13 +158,9 @@ const Auth = () => {
                 );
                 const user = userCredential.user;
 
-                // Trimite email de verificare
                 await sendEmailVerification(user);
-                setSuccess(
-                    `Contul a fost creat cu succes. Verifică email-ul la adresa ${email} pentru confirmare!`
-                );
+                setSuccess(`Contul a fost creat. Verifică email-ul ${email} pentru confirmare.`);
             } else {
-                // Autentificare
                 if (!email) throw new Error("Introduceți o adresă de email.");
                 if (!password) throw new Error("Introduceți o parolă.");
 
@@ -172,44 +172,15 @@ const Auth = () => {
                 const user = userCredential.user;
 
                 if (!user.emailVerified) {
-                    throw new Error(
-                        "Email-ul nu este verificat. Verifică-ți inbox-ul."
-                    );
+                    throw new Error("Email-ul nu este verificat. Verifică-ți inbox-ul.");
                 }
 
-                setSuccess("Autentificare reușită!");
+                setSuccess("Autentificat cu succes!");
                 navigate("/dashboard");
             }
         } catch (err) {
             console.error(err);
-
-            // Tratăm codurile de eroare Firebase
-            if (err.code) {
-                switch (err.code) {
-                    case "auth/email-already-in-use":
-                        setError("Adresa de email este deja utilizată.");
-                        break;
-                    case "auth/invalid-email":
-                        setError("Adresa de email nu este validă.");
-                        break;
-                    case "auth/weak-password":
-                        setError("Parola este prea slabă.");
-                        break;
-                    case "auth/user-disabled":
-                        setError("Contul este dezactivat.");
-                        break;
-                    case "auth/user-not-found":
-                        setError("Email-ul nu există.");
-                        break;
-                    case "auth/wrong-password":
-                        setError("Parola este greșită.");
-                        break;
-                    default:
-                        setError("A apărut o eroare necunoscută.");
-                }
-            } else {
-                setError(err.message || "A apărut o eroare necunoscută.");
-            }
+            setError(err.message || "A apărut o eroare necunoscută.");
         }
     };
 
