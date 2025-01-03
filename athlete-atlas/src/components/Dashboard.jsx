@@ -4,7 +4,7 @@ import { signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { TextField, Button, Checkbox, FormControlLabel } from "@mui/material";
 import { db } from "../firebase";
-import { collection, getDocs, addDoc, query, where } from "firebase/firestore";
+import { collection, getDocs, addDoc, query, where, deleteDoc, doc  } from "firebase/firestore";
 import { Timestamp } from "firebase/firestore";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -92,6 +92,12 @@ const Dashboard = () => {
     };
 
     const handleAddTeam = async () => {
+        if (!teamName.trim() || !teamSport.trim()) {
+            console.error("Toate câmpurile pentru echipă trebuie completate.");
+            alert("Te rugăm să completezi toate câmpurile pentru echipă.");
+            return;
+        }
+    
         try {
             const docRef = await addDoc(collection(db, "teams"), {
                 name: teamName,
@@ -107,41 +113,95 @@ const Dashboard = () => {
     };
 
     const handleAddMemberByTeamName = async () => {
-    try {
-        // Căutare echipă după nume
-        const q = query(collection(db, "teams"), where("name", "==", teamNameForMember));
-        const querySnapshot = await getDocs(q);
-
-        if (!querySnapshot.empty) {
-            const teamDoc = querySnapshot.docs[0]; // Prima echipă găsită (numele trebuie să fie unic)
-            const teamId = teamDoc.id;
-
-            // Adaugă membrul în subcolecția "members"
-            const docRef = await addDoc(collection(db, `teams/${teamId}/members`), {
-                ...memberData,
-                birthDate: Timestamp.fromDate(new Date(memberData.birthDate)), // Conversia birthDate
-            });
-            console.log("Membrul adăugat cu ID:", docRef.id);
-            setMemberData({
-                firstName: "",
-                lastName: "",
-                fatherInitial: "",
-                birthDate: dayjs(), // Resetează data de naștere
-                isStudent: false,
-                faculty: "",
-                isActive: true,
-            });
-            setTeamNameForMember("");
-            if (selectedTeamId === teamId) toggleMembersVisibility(teamId);
-        } else {
-            console.error("Nu a fost găsită nicio echipă cu acest nume.");
+        const currentDate = dayjs(); // Data curentă
+    
+        // Validări de completitudine și structură
+        if (
+            !teamNameForMember?.trim() || // Verificăm dacă este definit și nu este gol
+            !memberData?.firstName?.trim() ||
+            !memberData?.lastName?.trim() ||
+            !memberData?.fatherInitial?.trim() ||
+            !memberData?.birthDate || // Verificăm dacă data de naștere este definită
+            (memberData.isStudent && !memberData.university?.trim()) // Dacă este student, universitatea trebuie completată
+        ) {
+            console.error("Toate câmpurile pentru membru trebuie completate corect.");
+            alert("Te rugăm să completezi toate câmpurile pentru membru corect.");
+            return;
         }
-    } catch (e) {
-        console.error("Eroare la adăugarea membrului:", e);
-    }
-};
+    
+        // Validare data de naștere
+        if (dayjs(memberData.birthDate).isAfter(currentDate)) {
+            console.error("Data de naștere nu poate fi în viitor.");
+            alert("Data de naștere nu poate fi în viitor. Te rugăm să introduci o dată validă.");
+            return;
+        }
+    
+        try {
+            // Căutare echipă după nume
+            const q = query(collection(db, "teams"), where("name", "==", teamNameForMember));
+            const querySnapshot = await getDocs(q);
+    
+            if (!querySnapshot.empty) {
+                const teamDoc = querySnapshot.docs[0]; // Prima echipă găsită (numele trebuie să fie unic)
+                const teamId = teamDoc.id;
+    
+                // Adaugă membrul în subcolecția "members"
+                const docRef = await addDoc(collection(db, `teams/${teamId}/members`), {
+                    ...memberData,
+                    birthDate: Timestamp.fromDate(new Date(memberData.birthDate)), // Conversia birthDate
+                });
+                console.log("Membrul adăugat cu ID:", docRef.id);
+    
+                // Resetează formularul
+                setMemberData({
+                    firstName: "",
+                    lastName: "",
+                    fatherInitial: "",
+                    birthDate: dayjs(), // Resetează data de naștere
+                    isStudent: false,
+                    university: "",
+                    isActive: true,
+                });
+                setTeamNameForMember("");
+    
+                // Actualizează membrii echipei dacă echipa este vizibilă
+                if (selectedTeamId === teamId) toggleMembersVisibility(teamId);
+            } else {
+                console.error("Nu a fost găsită nicio echipă cu acest nume.");
+                alert("Echipa specificată nu există.");
+            }
+        } catch (e) {
+            console.error("Eroare la adăugarea membrului:", e);
+        }
+    };
+    
+    const handleDeleteTeam = async (teamId) => {
+        try {
+            // Șterge membrii echipei
+            const membersCollectionRef = collection(db, `teams/${teamId}/members`);
+            const membersSnapshot = await getDocs(membersCollectionRef);
+            const deletePromises = membersSnapshot.docs.map((memberDoc) => deleteDoc(memberDoc.ref));
+            await Promise.all(deletePromises);
+    
+            // Șterge echipa
+            await deleteDoc(doc(db, "teams", teamId));
+            console.log("Echipa a fost ștearsă cu succes!");
+            fetchTeams(); // Actualizează lista echipelor
+        } catch (error) {
+            console.error("Eroare la ștergerea echipei:", error);
+        }
+    };
 
-
+    const handleDeleteMember = async (teamId, memberId) => {
+        try {
+            await deleteDoc(doc(db, `teams/${teamId}/members`, memberId));
+            console.log("Membrul a fost șters cu succes!");
+            toggleMembersVisibility(teamId); // Actualizează lista membrilor echipei
+        } catch (error) {
+            console.error("Eroare la ștergerea membrului:", error);
+        }
+    };
+    
     useEffect(() => {
         fetchTeams();
     }, []);
@@ -268,6 +328,15 @@ const Dashboard = () => {
                                     ? "Ascunde Membrii"
                                     : "Vezi Membrii"}
                             </Button>
+                            <Button
+                                onClick={() => handleDeleteTeam(team.id)}
+                                variant="contained"
+                                color="error"
+                                style={{ marginLeft: "10px" }}
+                            >
+                                Șterge Echipa
+                            </Button>
+
                         </li>
                     ))}
                 </ul>
@@ -286,6 +355,14 @@ const Dashboard = () => {
                                     <span>- Student la {member.faculty}</span>
                                 )}
                                 {member.isActive ? " (Activ)" : " (Inactiv)"}
+                            <Button
+                                onClick={() => handleDeleteMember(selectedTeamId, member.id)}
+                                variant="contained"
+                                color="error"
+                                style={{ marginLeft: "10px" }}
+                            >
+                                Șterge Membrul
+                            </Button>
                             </li>
                         ))}
                     </ul>
