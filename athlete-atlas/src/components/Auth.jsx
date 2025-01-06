@@ -35,7 +35,7 @@ const Auth = () => {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
-    const [isRegistering, setIsRegistering] = useState(true);
+    const [isRegistering, setIsRegistering] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -44,10 +44,16 @@ const Auth = () => {
         setShowPassword(!showPassword);
         setShowConfirmPassword(!showConfirmPassword);
     };
-    const [isDarkMode, setIsDarkMode] = useState(true);
+    const [isDarkMode, setIsDarkMode] = useState(() => {
+        // Inițializați din localStorage sau folosiți valoarea implicită (true)
+        const savedTheme = localStorage.getItem("isDarkMode");
+        return savedTheme ? JSON.parse(savedTheme) : true;
+    });
+    const [isButtonDisabled, setIsButtonDisabled] = useState(false);
+    const [attempts, setAttempts] = useState(0);
     const navigate = useNavigate();
 
-    // Temele pentru moduri dark și light
+
     const darkTheme = createTheme({
         palette: {
             mode: "dark",
@@ -92,6 +98,13 @@ const Auth = () => {
     });
 
     const theme = isDarkMode ? darkTheme : lightTheme;
+    const handleThemeToggle = () => {
+        setIsDarkMode((prevMode) => {
+            const newMode = !prevMode;
+            localStorage.setItem("isDarkMode", JSON.stringify(newMode)); // Salvează noua temă
+            return newMode;
+        });
+    };
 
     const handleGoogleSignIn = async () => {
         const googleProvider = new GoogleAuthProvider();
@@ -112,28 +125,26 @@ const Auth = () => {
             });
     };
 
-    // Declarăm un contor global pentru numărul de încercări
-    let attempts = 0;
-
-    // Funcția de resetare a contorului
-    const resetAttempts = () => {
-        attempts = 0;
-    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setError(null); // Resetăm mesajele de eroare
-        setSuccess(""); // Resetăm mesajele de succes
+        setError(null);
+        setSuccess("");
 
         try {
-            // Blocăm dacă se depășește numărul de încercări
+
+
             if (attempts >= 5) {
                 setError("Prea multe încercări nereușite. Vă rugăm să așteptați 30 de secunde înainte de a încerca din nou.");
+                setIsButtonDisabled(true);
+                setTimeout(() => {
+                    setIsButtonDisabled(false);
+                }, 30000);
+                setAttempts(0);
                 return;
             }
 
-            // Creștem numărul de încercări
-            attempts++;
+            setAttempts(prev => prev + 1);
 
             await setPersistence(auth, browserLocalPersistence);
 
@@ -141,15 +152,12 @@ const Auth = () => {
                 if (!email) throw new Error("Introduceți o adresă de email.");
                 if (password.length < 6) throw new Error("Parola trebuie să aibă cel puțin 6 caractere.");
                 if (password !== confirmPassword) throw new Error("Parolele nu coincid.");
-
-                // Crearea contului utilizator
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-
-                // Trimiterea emailului de verificare
+                await sendEmailVerification(auth.currentUser);
                 await sendEmailVerification(auth.currentUser);
 
                 setSuccess("Contul a fost creat cu succes! Verifică-ți email-ul pentru confirmare.");
-                resetAttempts(); // Resetăm când operația reușește
+
             } else {
                 if (!email) throw new Error("Introduceți o adresă de email.");
                 if (!password) throw new Error("Introduceți o parolă.");
@@ -163,54 +171,51 @@ const Auth = () => {
 
                 setSuccess("Autentificat cu succes!");
                 navigate("/dashboard");
-                resetAttempts(); // Resetăm când operația reușește
+
             }
         } catch (error) {
-            // Verificăm codurile de eroare Firebase și gestionăm mesajele corespunzătoare
             if (error.code === "auth/too-many-requests") {
-                // Blocăm manual pentru 30 de secunde
                 setError("Prea multe încercări. Așteptați 30 de secunde și încercați din nou.");
-                setTimeout(() => resetAttempts(), 30000); // Resetăm după 30 de secunde
+                setTimeout(() => {
+                    setIsButtonDisabled(false);
+                }, 30000);
             } else {
-                // Alte erori Firebase
                 switch (error.code) {
                     case "auth/email-already-in-use":
                         setError("Această adresă de email este deja folosită");
                         break;
                     case "auth/weak-password":
-                        setError("Parola este prea slabă. Te rugăm să alegi o parolă mai puternică.");
+                        setError("Parola este prea slabă. Te rugăm să alegi o parolă mai puternică!");
                         break;
                     case "auth/invalid-email":
-                        setError("Adresa de email este nevalidă. Verifică formatul.");
+                        setError("Adresa de email este invalida. Verifica formatul!");
                         break;
                     case "auth/user-not-found":
-                        setError("Nu există niciun utilizator cu această adresă de email.");
+                        setError("Nu există niciun utilizator cu această adresă de email!");
                         break;
                     case "auth/wrong-password":
-                        setError("Parola introdusă este greșită. Încearcă din nou.");
+                        setError("Parola introdusă este greșită. Încearcă din nou!");
                         break;
                     case "auth/network-request-failed":
-                        setError("Conexiunea la rețea a eșuat. Verificați conexiunea la internet.");
+                        setError("Conexiunea la rețea a eșuat. Verificați conexiunea la internet!");
                         break;
                     case "auth/invalid-credential":
-                        setError("Parola sau emailul sunt gresite");
+                        setError("Emailul sau parola introdusă este incorectă. Te rugăm să verifici și să încerci din nou!");
                         break;
                     case "auth/internal-error":
-                        setError("A apărut o eroare internă. Încercați din nou.");
+                        setError("A apărut o eroare internă. Încercați din nou!");
                         break;
                     case "auth/cancelled-popup-request":
-                        setError("Ati anulat conectarea cu contul Google");
+                        setError("Ati anulat conectarea cu contul Google!");
                         break;
-                    default :
-                        // Eroare necunoscută
-                        setError(error.message || "A apărut o eroare necunoscută.");
+                    default:
+                        setError(error.message || "A apărut o eroare necunoscută!");
                 }
             }
         }
     };
 
     return (
-        // Restul codului rămâne neschimbat
         <ThemeProvider theme={theme}>
             <Box
                 sx={{
@@ -236,8 +241,7 @@ const Auth = () => {
                                     <WbSunnyIcon sx={{ color: isDarkMode ? "#FDB813" : "#FFC107" }} />
                                     <Switch
                                         checked={isDarkMode}
-                                        onChange={() => setIsDarkMode(!isDarkMode)}
-                                        color="primary"
+                                        onChange={handleThemeToggle}                                        color="primary"
                                     />
                                     <NightsStayIcon sx={{ color: isDarkMode ? "#1976D2" : "#3F51B5" }} />
                                 </Box>
@@ -344,7 +348,8 @@ const Auth = () => {
                                 />
                             )}
 
-                            <Button
+<Button
+    disabled={isButtonDisabled}
                                 type="submit"
                                 variant="contained"
                                 fullWidth
@@ -358,7 +363,8 @@ const Auth = () => {
                             </Button>
                         </Box>
 
-                        <Button
+<Button
+    disabled={isButtonDisabled}
                             onClick={handleGoogleSignIn}
                             variant="contained"
                             sx={{
