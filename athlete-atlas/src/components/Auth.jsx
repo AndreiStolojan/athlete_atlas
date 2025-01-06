@@ -94,21 +94,22 @@ const Auth = () => {
     const theme = isDarkMode ? darkTheme : lightTheme;
 
     const handleGoogleSignIn = async () => {
-        setError(null);
-        setSuccess("");
-        try {
-            const googleProvider = new GoogleAuthProvider();
-            googleProvider.setCustomParameters({ prompt: "select_account" });
-            await setPersistence(auth, browserLocalPersistence);
+        const googleProvider = new GoogleAuthProvider();
+        googleProvider.setCustomParameters({ prompt: "select_account" });
 
-            const result = await signInWithPopup(auth, googleProvider);
-            if (!result.user) throw new Error("Conectarea Google a eșuat.");
-
-            setSuccess("Te-ai conectat cu succes folosind contul Google!");
-            navigate("/dashboard");
-        } catch (err) {
-            setError(err.message || "Conectarea cu Google a eșuat.");
-        }
+        signInWithPopup(auth, googleProvider)
+            .then(async (result) => {
+                await setPersistence(auth, browserLocalPersistence);
+                setSuccess("Te-ai conectat cu succes folosind contul Google!");
+                navigate("/dashboard");
+            })
+            .catch((error) => {
+                if (error.code === "auth/popup-blocked") {
+                    console.log("Pop-up blocat de browser.");
+                } else {
+                    setError(error.message || "Conectarea cu Google a eșuat.");
+                }
+            });
     };
 
     // Declarăm un contor global pentru numărul de încercări
@@ -196,9 +197,6 @@ const Auth = () => {
                         break;
                     case "auth/internal-error":
                         setError("A apărut o eroare internă. Încercați din nou.");
-                        break;
-                    case "auth/popup-blocked":
-                        setError("");
                         break;
                     case "auth/cancelled-popup-request":
                         setError("Ati anulat conectarea cu contul Google");
