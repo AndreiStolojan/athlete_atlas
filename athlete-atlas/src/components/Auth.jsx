@@ -197,7 +197,13 @@ const Auth = () => {
                     case "auth/internal-error":
                         setError("A apărut o eroare internă. Încercați din nou.");
                         break;
-                    default:
+                    case "auth/popup-blocked":
+                        setError("");
+                        break;
+                    case "auth/cancelled-popup-request":
+                        setError("Ati anulat conectarea cu contul Google");
+                        break;
+                    default :
                         // Eroare necunoscută
                         setError(error.message || "A apărut o eroare necunoscută.");
                 }
