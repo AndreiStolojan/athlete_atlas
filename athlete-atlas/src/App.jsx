@@ -32,10 +32,6 @@ function App() {
         setEmailVerified(false);
     };
 
-    if (loading) {
-        return <p>Se încarcă...</p>;
-    }
-
     return (
         <Router>
             <Routes>
