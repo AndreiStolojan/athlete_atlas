@@ -114,7 +114,7 @@ const Auth = () => {
     // Declarăm un contor global pentru numărul de încercări
     let attempts = 0;
 
-// Funcția de resetare a contorului
+    // Funcția de resetare a contorului
     const resetAttempts = () => {
         attempts = 0;
     };
@@ -141,8 +141,13 @@ const Auth = () => {
                 if (password.length < 6) throw new Error("Parola trebuie să aibă cel puțin 6 caractere.");
                 if (password !== confirmPassword) throw new Error("Parolele nu coincid.");
 
-                await createUserWithEmailAndPassword(auth, email, password);
-                setSuccess("Contul a fost creat cu succes! Verifică email-ul pentru confirmare.");
+                // Crearea contului utilizator
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+
+                // Trimiterea emailului de verificare
+                await sendEmailVerification(auth.currentUser);
+
+                setSuccess("Contul a fost creat cu succes! Verifică-ți email-ul pentru confirmare.");
                 resetAttempts(); // Resetăm când operația reușește
             } else {
                 if (!email) throw new Error("Introduceți o adresă de email.");
@@ -201,6 +206,7 @@ const Auth = () => {
     };
 
     return (
+        // Restul codului rămâne neschimbat
         <ThemeProvider theme={theme}>
             <Box
                 sx={{
@@ -221,18 +227,18 @@ const Auth = () => {
                     {/* Schimbarea temei cu soare în stânga și lună în dreapta */}
                     <Box sx={{ position: "absolute", top: 15, right: 15 }}>
                         <FormControlLabel
-label={
-    <Box display="flex" alignItems="center" gap={1}>
-        <WbSunnyIcon sx={{ color: isDarkMode ? "#FDB813" : "#FFC107" }} />
-        <Switch
-            checked={isDarkMode}
-            onChange={() => setIsDarkMode(!isDarkMode)}
-            color="primary"
-        />
-        <NightsStayIcon sx={{ color: isDarkMode ? "#1976D2" : "#3F51B5" }} />
-    </Box>
-}
-control={<span />}
+                            label={
+                                <Box display="flex" alignItems="center" gap={1}>
+                                    <WbSunnyIcon sx={{ color: isDarkMode ? "#FDB813" : "#FFC107" }} />
+                                    <Switch
+                                        checked={isDarkMode}
+                                        onChange={() => setIsDarkMode(!isDarkMode)}
+                                        color="primary"
+                                    />
+                                    <NightsStayIcon sx={{ color: isDarkMode ? "#1976D2" : "#3F51B5" }} />
+                                </Box>
+                            }
+                            control={<span />}
                             sx={{
                                 color: theme.palette.text.primary,
                                 "& .MuiTypography-root": { fontSize: "0.9rem" },
