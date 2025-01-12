@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { auth } from "../firebase";
+import { auth, storage } from "../firebase";
 import { signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
+import { deleteObject } from "firebase/storage"; // Importă
 import {
     AppBar,
     Toolbar,
@@ -39,10 +40,17 @@ import {
     getDoc // Adăugăm importul pentru getDoc
 } from "firebase/firestore";
 import { db } from "../firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const Dashboard = () => {
     const navigate = useNavigate();
-
+    const [matches, setMatches] = useState([]); // Lista meciurilor.
+    const [dialogOpenMatch, setDialogOpenMatch] = useState(false); // Stat pentru dialogul de creare/actualizare a meciului.
+    const [newMatchDate, setNewMatchDate] = useState(""); // Data meciului.
+    const [newOpponentTeam, setNewOpponentTeam] = useState(""); // Numele echipei adverse.
+    const [newGoalsFor, setNewGoalsFor] = useState(0); // Goluri date.
+    const [newGoalsAgainst, setNewGoalsAgainst] = useState(0); // Goluri primite.
+    const [newMatchFile, setNewMatchFile] = useState(null); // PDF-ul raportului meciului.
     const [teams, setTeams] = useState([]);
     const [selectedTeamId, setSelectedTeamId] = useState(null);
     const [selectedTeamMembers, setSelectedTeamMembers] = useState([]);
@@ -59,7 +67,107 @@ const Dashboard = () => {
     const [newMemberUniversity, setNewMemberUniversity] = useState("");
     const [newMemberIsActive, setNewMemberIsActive] = useState(false);
     const [editMemberId, setEditMemberId] = useState(null);
+    const [newMemberCNP, setNewMemberCNP] = useState("");
+    const [newMemberRegistrationNumber, setNewMemberRegistrationNumber] = useState("");
+    const [newMemberMedicalVisaExpiry, setNewMemberMedicalVisaExpiry] = useState("");
 
+    const handleDeleteMatch = async (matchId, matchPdfUrl) => {
+        if (!selectedTeamId) {
+            alert("Nu există o echipă selectată!");
+            return;
+        }
+
+        try {
+            // Verificări pentru permisiuni
+            const teamDoc = await getDoc(doc(db, "teams", selectedTeamId));
+            if (teamDoc.data().createdBy !== auth.currentUser?.uid) {
+                alert("Nu aveți permisiuni să ștergeți acest meci!");
+                return;
+            }
+
+            // Ștergere fișier PDF din Firebase Storage (dacă există)
+            if (matchPdfUrl) {
+                try {
+                    const decodedUrl = decodeURIComponent(matchPdfUrl);
+                    const baseUrl = `https://firebasestorage.googleapis.com/v0/b/${process.env.REACT_APP_FIREBASE_STORAGE_BUCKET}/o/`;
+                    if (decodedUrl.startsWith(baseUrl)) {
+                        const relativePath = decodedUrl.replace(baseUrl, "").split("?")[0];
+                        const fileRef = ref(storage, relativePath);
+                        await deleteObject(fileRef); // Ștergere fișier
+                    }
+                } catch (fileError) {
+                    console.warn("Fișierul nu a fost găsit în Firebase Storage:", fileError.message);
+                }
+            }
+
+            // Ștergerea documentului din Firestore
+            const matchRef = doc(db, `teams/${selectedTeamId}/matches/${matchId}`);
+            await deleteDoc(matchRef); // Șterge meciul din Firestore
+
+            alert("Meciul a fost șters cu succes!");
+            fetchMatches(selectedTeamId); // Reîncarcă meciurile
+        } catch (error) {
+            console.error("Eroare la ștergerea meciului:", error.message);
+            alert(`Eroare: ${error.message}`);
+        }
+    };
+
+    const fetchMatches = async (teamId) => {
+        try {
+            const matchesSnapshot = await getDocs(collection(db, `teams/${teamId}/matches`));
+            const matchesData = matchesSnapshot.docs.map((doc) => ({
+                id: doc.id,
+                ...doc.data(),
+            }));
+            setMatches(matchesData);
+        } catch (error) {
+            console.error("Eroare la obținerea meciurilor:", error.message);
+        }
+    };
+    const handleAddMatch = async () => {
+        if (!selectedTeamId || !newOpponentTeam.trim() || !newMatchDate) {
+            return alert("Completați toate câmpurile pentru a adăuga meciul!");
+        }
+
+        try {
+            let pdfUrl = "";
+
+            // Dacă există un fișier PDF, se încarcă în Firebase Storage
+            if (newMatchFile) {
+                const storageRef = ref(storage, `matches/${selectedTeamId}/${newMatchFile.name}`);
+                await uploadBytes(storageRef, newMatchFile); // Încărcare PDF.
+                pdfUrl = await getDownloadURL(storageRef); // Obținere URL PDF.
+            }
+
+            // Salvăm datele meciului în baza de date Firestore
+            const matchesRef = collection(db, `teams/${selectedTeamId}/matches`);
+            await addDoc(matchesRef, {
+                date: newMatchDate,
+                opponentTeam: newOpponentTeam,
+                goalsFor: newGoalsFor,
+                goalsAgainst: newGoalsAgainst,
+                createdBy: auth.currentUser?.uid, // User ID.
+                matchReportPdfUrl: pdfUrl,
+            });
+
+            // Resetăm formularul
+            resetMatchForm();
+            // Refacem lista de meciuri
+            fetchMatches(selectedTeamId);
+        } catch (error) {
+            console.error("Eroare la adăugarea meciului:", error.message);
+            alert("Eroare la salvarea meciului!");
+        }
+    };
+
+    const resetMatchForm = () => {
+        setNewMatchDate("");
+        setNewOpponentTeam("");
+        setNewGoalsFor(0);
+        setNewGoalsAgainst(0);
+        setNewMatchFile(null);
+        setDialogOpenMatch(false);
+    };
     // Fetch echipele utilizatorului conectat
     const fetchTeams = async () => {
         try {
@@ -118,6 +226,36 @@ const Dashboard = () => {
         }
     };
 
+    // Șterge un membru al echipei
+    const handleDeleteMember = async (memberId) => {
+        if (!selectedTeamId) {
+            alert("Nu există o echipă selectată!");
+            return;
+        }
+
+        try {
+            // Obține referința către documentul membrului
+            const memberRef = doc(db, `teams/${selectedTeamId}/members/${memberId}`);
+            const memberDoc = await getDoc(memberRef);
+
+            // Verifică dacă utilizatorul este creatorul echipei
+            const teamRef = doc(db, "teams", selectedTeamId);
+            const teamDoc = await getDoc(teamRef);
+            if (teamDoc.data().createdBy !== auth.currentUser?.uid) {
+                alert("Nu aveți permisiuni să ștergeți acest membru!");
+                return;
+            }
+
+            // Șterge membrul
+            await deleteDoc(memberRef);
+            toggleMembersVisibility(selectedTeamId); // Actualizează lista membrilor
+            alert("Membrul a fost șters cu succes!");
+        } catch (error) {
+            console.error("Eroare la ștergerea membrului:", error.message);
+            alert(`Eroare: ${error.message}`);
+        }
+    };
+
     // Șterge echipă
     const handleDeleteTeam = async (teamId) => {
         try {
@@ -165,6 +303,13 @@ const Dashboard = () => {
         }
     };
 
+    // Funcție pentru deschiderea dialogului de adăugare
+    const openAddMemberDialog = () => {
+        resetMemberForm(); // Resetăm formularul complet
+        setDialogOpen(true); // Deschidem dialogul
+    };
+
+
     // Începe editarea unui membru
     const startEditMember = (member) => {
         setEditMemberId(member.id);
@@ -174,8 +319,12 @@ const Dashboard = () => {
         setNewMemberBirthDate(member.birthDate);
         setNewMemberUniversity(member.university || "");
         setNewMemberIsActive(member.isActive);
+        setNewMemberCNP(member.cnp || "");
+        setNewMemberRegistrationNumber(member.registrationNumber || "");
+        setNewMemberMedicalVisaExpiry(member.medicalVisaExpiry || "");
         setDialogOpen(true);
     };
+
 
     // Adaugă sau actualizează un membru
     const handleSaveMember = async () => {
@@ -205,6 +354,9 @@ const Dashboard = () => {
                     birthDate: newMemberBirthDate,
                     university: newMemberUniversity || null,
                     isActive: newMemberIsActive,
+                    cnp: newMemberCNP,
+                    registrationNumber: newMemberRegistrationNumber,
+                    medicalVisaExpiry: newMemberMedicalVisaExpiry,
                 });
             } else {
                 const membersRef = collection(db, `teams/${selectedTeamId}/members`);
@@ -215,15 +367,19 @@ const Dashboard = () => {
                     birthDate: newMemberBirthDate,
                     university: newMemberUniversity || null,
                     isActive: newMemberIsActive,
+                    cnp: newMemberCNP,
+                    registrationNumber: newMemberRegistrationNumber,
+                    medicalVisaExpiry: newMemberMedicalVisaExpiry,
+                    createdBy: auth.currentUser.uid,
                 });
             }
 
-            // Resetăm formularul
             resetMemberForm();
             toggleMembersVisibility(selectedTeamId);
         } catch (error) {
             console.error("Eroare la salvarea membrului:", error.message);
         }
+
     };
 
     const resetMemberForm = () => {
@@ -233,9 +389,14 @@ const Dashboard = () => {
         setNewMemberBirthDate("");
         setNewMemberUniversity("");
         setNewMemberIsActive(false);
+        setNewMemberCNP("");
+        setNewMemberRegistrationNumber("");
+        setNewMemberMedicalVisaExpiry("");
         setEditMemberId(null);
         setDialogOpen(false);
     };
+
+
 
     // Logout
     const handleLogout = async () => {
@@ -283,7 +444,7 @@ const Dashboard = () => {
                 />
                 <TextField
                     fullWidth
-                    label="Sportul"
+                    label="Sectia"
                     value={teamSport}
                     onChange={(e) => setTeamSport(e.target.value)}
                     style={{ marginBottom: "10px" }}
@@ -336,9 +497,12 @@ const Dashboard = () => {
                             <ListItem key={member.id}>
                                 <ListItemText
                                     primary={`${member.firstName} ${member.lastName}`}
-                                    secondary={`${member.university || "Fără universitate"} | ${
+                                    secondary={`Universitate: ${member.university || "Fără universitate"} | ${
                                         member.isActive ? "Activ" : "Inactiv"
-                                    }`}
+                                    }
+            | CNP: ${member.cnp || "N/A"}
+            | Nr. Legitimație: ${member.registrationNumber || "N/A"}
+            | Expirare Viză Medicală: ${member.medicalVisaExpiry || "N/A"}`}
                                 />
                                 <ListItemSecondaryAction>
                                     <IconButton
@@ -351,9 +515,7 @@ const Dashboard = () => {
                                     <IconButton
                                         edge="end"
                                         color="error"
-                                        onClick={() =>
-                                            console.log(`Șterge membru ${member.id}`)
-                                        }
+                                        onClick={() => handleDeleteMember(member.id)}
                                     >
                                         <DeleteIcon />
                                     </IconButton>
@@ -361,6 +523,43 @@ const Dashboard = () => {
                             </ListItem>
                         ))}
                     </List>
+
+                    {/* AICI ADAUGI FUNCȚIONALITATEA 7 */}
+                    <div>
+                        <Typography variant="h5" style={{ marginTop: "20px" }}>
+                            Meciurile echipei
+                        </Typography>
+                        <List>
+                            {matches.map((match) => (
+                                <ListItem key={match.id}>
+                                    <ListItemText
+                                        primary={`Meci cu: ${match.opponentTeam} | Data: ${match.date}`}
+                                        secondary={`Scor: ${match.goalsFor} - ${match.goalsAgainst}`}
+                                    />
+                                    {match.matchReportPdfUrl && (
+                                        <a
+                                            href={match.matchReportPdfUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ marginLeft: "16px" }}
+                                        >
+                                            Vezi Raport (PDF)
+                                        </a>
+                                    )}
+                                    <ListItemSecondaryAction>
+                                        <IconButton
+                                            edge="end"
+                                            color="error"
+                                            onClick={() => handleDeleteMatch(match.id, match.matchReportPdfUrl)}
+                                        >
+                                            <DeleteIcon />
+                                        </IconButton>
+                                    </ListItemSecondaryAction>
+                                </ListItem>
+                            ))}
+                        </List>
+                    </div>
+                    {/* SFÂRȘIT FUNCȚIONALITATE 7 */}
                 </div>
             )}
 
@@ -372,10 +571,12 @@ const Dashboard = () => {
                         bottom: "20px",
                         right: "20px",
                     }}
-                    onClick={() => setDialogOpen(true)}
+                    onClick={openAddMemberDialog} // Deschide dialogul de adăugare
                 >
                     <AddIcon />
                 </Fab>
+
+
             )}
 
             <Dialog
@@ -419,6 +620,27 @@ const Dashboard = () => {
                     <TextField
                         fullWidth
                         margin="dense"
+                        label="CNP"
+                        value={newMemberCNP}
+                        onChange={(e) => setNewMemberCNP(e.target.value)}
+                    />
+                    <TextField
+                        fullWidth
+                        margin="dense"
+                        label="Nr. Legitimație"
+                        value={newMemberRegistrationNumber}
+                        onChange={(e) => setNewMemberRegistrationNumber(e.target.value)}
+                    />
+                    <TextField
+                        fullWidth
+                        margin="dense"
+                        label="Data Expirare Viză Medicală (Zi/Lună/An)"
+                        value={newMemberMedicalVisaExpiry}
+                        onChange={(e) => setNewMemberMedicalVisaExpiry(e.target.value)}
+                    />
+                    <TextField
+                        fullWidth
+                        margin="dense"
                         label="Universitate"
                         value={newMemberUniversity}
                         onChange={(e) => setNewMemberUniversity(e.target.value)}
@@ -439,6 +661,79 @@ const Dashboard = () => {
                     </Button>
                     <Button onClick={handleSaveMember} color="primary">
                         {editMemberId ? "Salvează Modificările" : "Adaugă"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+            {selectedTeamId && (
+                <Fab
+                    color="primary"
+                    style={{
+                        position: "fixed",
+                        bottom: "80px",
+                        right: "20px",
+                    }}
+                    onClick={() => setDialogOpenMatch(true)} // Deschide dialogul pentru meciuri
+                >
+                    <AddIcon />
+                </Fab>
+            )}
+
+            <Dialog
+                open={dialogOpenMatch}
+                onClose={() => setDialogOpenMatch(false)}
+                fullWidth
+                maxWidth="sm"
+            >
+                <DialogTitle>Adaugă Meci Nou</DialogTitle>
+                <DialogContent>
+                    <TextField
+                        fullWidth
+                        margin="dense"
+                        label="Data Meciului"
+                        type="date"
+                        value={newMatchDate}
+                        onChange={(e) => setNewMatchDate(e.target.value)}
+                        InputLabelProps={{
+                            shrink: true,
+                        }}
+                    />
+                    <TextField
+                        fullWidth
+                        margin="dense"
+                        label="Echipa Adversă"
+                        value={newOpponentTeam}
+                        onChange={(e) => setNewOpponentTeam(e.target.value)}
+                    />
+                    <TextField
+                        fullWidth
+                        margin="dense"
+                        label="Goluri Date"
+                        type="number"
+                        value={newGoalsFor}
+                        onChange={(e) => setNewGoalsFor(Number(e.target.value))}
+                    />
+                    <TextField
+                        fullWidth
+                        margin="dense"
+                        label="Goluri Primite"
+                        type="number"
+                        value={newGoalsAgainst}
+                        onChange={(e) => setNewGoalsAgainst(Number(e.target.value))}
+                    />
+                    <label>Adaugă Raportul Meciului (PDF)</label>
+                    <input
+                        type="file"
+                        accept="application/pdf"
+                        onChange={(e) => setNewMatchFile(e.target.files[0])}
+                        style={{ marginTop: "10px" }}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setDialogOpenMatch(false)} color="secondary">
+                        Anulează
+                    </Button>
+                    <Button onClick={handleAddMatch} color="primary">
+                        Adaugă
                     </Button>
                 </DialogActions>
             </Dialog>
