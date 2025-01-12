@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Route, Routes, Navigate } from "react-router-dom";
 import Auth from "./components/Auth";
 import Dashboard from "./components/Dashboard";
+import TeamPage from "./components/TeamPage";
 import WaitingForVerification from "./components/WaitingForVerification"; // Pagina de așteptare
 import { auth } from "./firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -54,6 +55,16 @@ function App() {
                     element={
                         user && emailVerified ? (
                             <Dashboard />
+                        ) : (
+                            <Navigate to="/" />
+                        )
+                    }
+                />
+                <Route 
+                    path="/team/:teamId"
+                    element={
+                        user && emailVerified ? (
+                            <TeamPage />
                         ) : (
                             <Navigate to="/" />
                         )
