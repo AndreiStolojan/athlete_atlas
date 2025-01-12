@@ -779,7 +779,7 @@ const Dashboard = () => {
                     <Typography variant="h6" style={{ flexGrow: 1 }}>
                         Gestionarea Echipelor
                     </Typography>
-                    <Button color="inherit" onClick={() => auth.signOut()}>
+                    <Button color="inherit" onClick={handleLogout}>
                         Logout
                     </Button>
                 </Toolbar>
