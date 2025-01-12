@@ -119,7 +119,7 @@ const Dashboard = () => {
                 id: doc.id,
                 ...doc.data(),
             }));
-            setMatches(matchesData);
+            setMatches(matchesData); // Actualizăm lista meciurilor pe baza echipei selectate
         } catch (error) {
             console.error("Eroare la obținerea meciurilor:", error.message);
         }
@@ -132,34 +132,29 @@ const Dashboard = () => {
         try {
             let pdfUrl = "";
 
-            // Dacă există un fișier PDF, se încarcă în Firebase Storage
             if (newMatchFile) {
                 const storageRef = ref(storage, `matches/${selectedTeamId}/${newMatchFile.name}`);
-                await uploadBytes(storageRef, newMatchFile); // Încărcare PDF.
-                pdfUrl = await getDownloadURL(storageRef); // Obținere URL PDF.
+                await uploadBytes(storageRef, newMatchFile);
+                pdfUrl = await getDownloadURL(storageRef); // Obținem URL-ul pentru PDF.
             }
 
-            // Salvăm datele meciului în baza de date Firestore
             const matchesRef = collection(db, `teams/${selectedTeamId}/matches`);
             await addDoc(matchesRef, {
                 date: newMatchDate,
                 opponentTeam: newOpponentTeam,
                 goalsFor: newGoalsFor,
                 goalsAgainst: newGoalsAgainst,
-                createdBy: auth.currentUser?.uid, // User ID.
+                createdBy: auth.currentUser?.uid,
                 matchReportPdfUrl: pdfUrl,
             });
 
-            // Resetăm formularul
             resetMatchForm();
-            // Refacem lista de meciuri
-            fetchMatches(selectedTeamId);
+            fetchMatches(selectedTeamId); // Re-fetch după ce meciul este adăugat.
         } catch (error) {
             console.error("Eroare la adăugarea meciului:", error.message);
             alert("Eroare la salvarea meciului!");
         }
     };
-
     const resetMatchForm = () => {
         setNewMatchDate("");
         setNewOpponentTeam("");
@@ -281,15 +276,14 @@ const Dashboard = () => {
 
     // Vizualizare membri echipă
     const toggleMembersVisibility = async (teamId) => {
-        if (showMembers && selectedTeamId === teamId) {
+        if (selectedTeamId === teamId && showMembers) {
             setShowMembers(false);
             setSelectedTeamId(null);
             setSelectedTeamMembers([]);
+            setMatches([]); // Resetăm lista meciurilor, pentru a evita erorile
         } else {
             try {
-                const querySnapshot = await getDocs(
-                    collection(db, `teams/${teamId}/members`)
-                );
+                const querySnapshot = await getDocs(collection(db, `teams/${teamId}/members`));
                 const membersData = querySnapshot.docs.map((doc) => ({
                     id: doc.id,
                     ...doc.data(),
@@ -297,8 +291,11 @@ const Dashboard = () => {
                 setSelectedTeamId(teamId);
                 setSelectedTeamMembers(membersData);
                 setShowMembers(true);
+
+                // Fetch matches pentru echipa selectată
+                fetchMatches(teamId);
             } catch (e) {
-                console.error("Eroare la obținerea membrilor:", e);
+                console.error("Eroare la obținerea membrilor sau meciurilor:", e);
             }
         }
     };
