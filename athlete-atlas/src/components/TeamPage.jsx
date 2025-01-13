@@ -39,6 +39,7 @@ import { deleteObject } from "firebase/storage";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import AddIcon from "@mui/icons-material/Add";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 const TeamPage = () => {
     const navigate = useNavigate();
@@ -48,16 +49,12 @@ const TeamPage = () => {
     const [matches, setMatches] = useState([]);
     const [view, setView] = useState("none"); // none, members, matches
 
-    const [dialogOpenMatch, setDialogOpenMatch] = useState(false); // Stat pentru dialogul de creare/actualizare a meciului.
-    const [newMatchDate, setNewMatchDate] = useState(""); // Data meciului.
-    const [newOpponentTeam, setNewOpponentTeam] = useState(""); // Numele echipei adverse.
-    const [newGoalsFor, setNewGoalsFor] = useState(0); // Goluri date.
-    const [newGoalsAgainst, setNewGoalsAgainst] = useState(0); // Goluri primite.
-    const [newMatchFile, setNewMatchFile] = useState(null); // PDF-ul raportului meciului.
-    const [teams, setTeams] = useState([]);
-    const [selectedTeamId, setSelectedTeamId] = useState(null);
-    const [selectedTeamMembers, setSelectedTeamMembers] = useState([]);
-    const [showMembers, setShowMembers] = useState(false);
+    const [dialogOpenMatch, setDialogOpenMatch] = useState(false);
+    const [newMatchDate, setNewMatchDate] = useState(""); 
+    const [newOpponentTeam, setNewOpponentTeam] = useState(""); 
+    const [newGoalsFor, setNewGoalsFor] = useState(0);
+    const [newGoalsAgainst, setNewGoalsAgainst] = useState(0);
+    const [newMatchFile, setNewMatchFile] = useState(null); 
 
     const [dialogOpen, setDialogOpen] = useState(false);
     const [newMemberFirstName, setNewMemberFirstName] = useState("");
@@ -72,6 +69,13 @@ const TeamPage = () => {
     const [newMemberMedicalVisaExpiry, setNewMemberMedicalVisaExpiry] = useState("");
 
     const fetchTeamData = async () => {
+        const userId = auth.currentUser?.uid || "";
+        if (!userId) {
+            console.error("Utilizatorul nu este conectat.");
+            navigate("/");
+            return;
+        }
+
         const teamDoc = await getDoc(doc(db, "teams", teamId));
         setTeam({ id: teamDoc.id, ...teamDoc.data() });
 
@@ -97,14 +101,12 @@ const TeamPage = () => {
         }
     
         try {
-            // Verificări pentru permisiuni
             const teamDoc = await getDoc(doc(db, "teams", teamId));
             if (teamDoc.data().createdBy !== auth.currentUser?.uid) {
                 alert("Nu aveți permisiuni să ștergeți acest meci!");
                 return;
             }
     
-            // Ștergere fișier PDF din Firebase Storage (dacă există)
             if (matchPdfUrl) {
                 try {
                     const decodedUrl = decodeURIComponent(matchPdfUrl);
@@ -112,19 +114,18 @@ const TeamPage = () => {
                     if (decodedUrl.startsWith(baseUrl)) {
                         const relativePath = decodedUrl.replace(baseUrl, "").split("?")[0];
                         const fileRef = ref(storage, relativePath);
-                        await deleteObject(fileRef); // Ștergere fișier
+                        await deleteObject(fileRef);
                     }
                 } catch (fileError) {
                     console.warn("Fișierul nu a fost găsit în Firebase Storage:", fileError.message);
                 }
             }
     
-            // Ștergerea documentului din Firestore
             const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`);
-            await deleteDoc(matchRef); // Șterge meciul din Firestore
+            await deleteDoc(matchRef);
     
             alert("Meciul a fost șters cu succes!");
-            fetchMatches(teamId); // Reîncarcă meciurile folosind teamId
+            fetchMatches(teamId);
         } catch (error) {
             console.error("Eroare la ștergerea meciului:", error.message);
             alert(`Eroare: ${error.message}`);
@@ -139,7 +140,7 @@ const TeamPage = () => {
                 id: doc.id,
                 ...doc.data(),
             }));
-            setMatches(matchesData); // Actualizăm lista meciurilor pe baza echipei selectate
+            setMatches(matchesData);
         } catch (error) {
             console.error("Eroare la obținerea meciurilor:", error.message);
         }
@@ -160,15 +161,21 @@ const TeamPage = () => {
         try {
             let pdfUrl = "";
     
+            if (!newMatchFile) {
+                return alert("Nu ați selectat niciun fișier pentru meci!");
+            }
+
             const fileExtension = newMatchFile.name.split('.').pop().toLowerCase();
             if (fileExtension !== "pdf") {
                 return alert("Doar fisiere de tip PDF sunt permise!");
             }
+
+
     
             if (newMatchFile) {
                 const storageRef = ref(storage, `matches/${teamId}/${newMatchFile.name}`);
                 await uploadBytes(storageRef, newMatchFile);
-                pdfUrl = await getDownloadURL(storageRef); // Obținem URL-ul pentru PDF.
+                pdfUrl = await getDownloadURL(storageRef);
             }
     
             const matchesRef = collection(db, `teams/${teamId}/matches`);
@@ -182,7 +189,7 @@ const TeamPage = () => {
             });
     
             resetMatchForm();
-            fetchMatches(teamId); // Re-fetch meciurile folosind teamId
+            fetchMatches(teamId);
         } catch (error) {
             console.error("Eroare la adăugarea meciului:", error.message);
             alert("Eroare la salvarea meciului!");
@@ -199,38 +206,11 @@ const TeamPage = () => {
             setDialogOpenMatch(false);
         };
     
-        // Fetch echipele utilizatorului conectat
-        const fetchTeams = async () => {
-            try {
-                const userId = auth.currentUser?.uid || ""; // Obținem ID-ul utilizatorului sau un string gol
-                if (!userId) {
-                    console.error("Utilizatorul nu este conectat.");
-                    navigate("/"); // Redirecționăm dacă utilizatorul nu este autentificat
-                    return;
-                }
-    
-                const q = query(collection(db, "teams"), where("createdBy", "==", userId));
-                const querySnapshot = await getDocs(q);
-                const teamsData = querySnapshot.docs.map((doc) => ({
-                    id: doc.id,
-                    ...doc.data(),
-                }));
-                setTeams(teamsData);
-            } catch (e) {
-                console.error("Eroare la obținerea echipelor:", e);
-            }
-        };
-    
-
-    
-        // Șterge un membru al echipei
         const handleDeleteMember = async (memberId) => {
             try {
-                // Obține referința către documentul membrului
                 const memberRef = doc(db, `teams/${teamId}/members/${memberId}`);
                 const memberDoc = await getDoc(memberRef);
         
-                // Verifică dacă utilizatorul este creatorul echipei
                 const teamRef = doc(db, "teams", teamId);
                 const teamDoc = await getDoc(teamRef);
                 if (teamDoc.data().createdBy !== auth.currentUser?.uid) {
@@ -238,29 +218,24 @@ const TeamPage = () => {
                     return;
                 }
         
-                // Șterge membrul
                 await deleteDoc(memberRef);
-                
-                // Reîncarcă datele echipei și membrilor din Firestore
+
+                alert("Membrul a fost șters cu succes!");
                 const membersSnapshot = await getDocs(collection(db, `teams/${teamId}/members`));
                 setMembers(membersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
         
-                alert("Membrul a fost șters cu succes!");
+                
             } catch (error) {
                 console.error("Eroare la ștergerea membrului:", error.message);
                 alert(`Eroare: ${error.message}`);
             }
         };
         
-    
-        // Funcție pentru deschiderea dialogului de adăugare
         const openAddMemberDialog = () => {
-            resetMemberForm(); // Resetăm formularul complet
-            setDialogOpen(true); // Deschidem dialogul
+            resetMemberForm();
+            setDialogOpen(true);
         };
     
-    
-        // Începe editarea unui membru
         const startEditMember = (member) => {
             setEditMemberId(member.id);
             setNewMemberFirstName(member.firstName);
@@ -275,13 +250,10 @@ const TeamPage = () => {
             setDialogOpen(true);
         };
     
-    
-        // Adaugă sau actualizează un membru
         const handleSaveMember = async () => {
-            const teamDoc = await getDoc(doc(db, "teams", teamId)); // folosim teamId din useEffect
+            const teamDoc = await getDoc(doc(db, "teams", teamId));
             const teamData = teamDoc.data();
         
-            // Verificăm dacă utilizatorul este creatorul echipei
             if (teamData.createdBy !== auth.currentUser?.uid) {
                 alert("Nu aveți permisiuni să editați membrii acestei echipe!");
                 return;
@@ -305,7 +277,6 @@ const TeamPage = () => {
             }
         
             try {
-                // Dacă se editează un membru existent
                 if (editMemberId) {
                     const memberRef = doc(db, `teams/${teamId}/members/${editMemberId}`);
                     await updateDoc(memberRef, {
@@ -320,7 +291,6 @@ const TeamPage = () => {
                         medicalVisaExpiry: newMemberMedicalVisaExpiry,
                     });
                 } else {
-                    // Dacă se adaugă un membru nou
                     const membersRef = collection(db, `teams/${teamId}/members`);
                     await addDoc(membersRef, {
                         firstName: newMemberFirstName,
@@ -336,7 +306,7 @@ const TeamPage = () => {
                     });
                 }
         
-                resetMemberForm(); // Resetăm formularul după salvare
+                resetMemberForm();
                 const membersSnapshot = await getDocs(collection(db, `teams/${teamId}/members`));
                 setMembers(membersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
             } catch (error) {
@@ -368,13 +338,24 @@ const TeamPage = () => {
         }
     };
 
+    const handleGoToDashboard = () => {
+        navigate("/dashboard");
+    };
+
     return (
         <div>
             
             <AppBar position="static" style={{ backgroundColor: "purple" }}>
                 <Toolbar>
+                    <IconButton
+                        edge="start"
+                        color="inherit"
+                        onClick={handleGoToDashboard}
+                        aria-label="back to dashboard"
+                    >
+                        <ArrowBackIcon />
+                    </IconButton>
                     <Typography variant="h6" style={{ flexGrow: 1 }}>
-                        Gestionarea Echipelor
                     </Typography>
                     <Button color="inherit" onClick={handleLogout}>
                         Logout
@@ -499,13 +480,13 @@ const TeamPage = () => {
                 style={{
                     position: "fixed",
                     bottom: "20px",
-                    left: "20px", // Poziționează div-ul în stânga
+                    left: "20px",
                     display: "flex",
                     alignItems: "center",
-                    border: "3px solid #8e24aa", // Bordura mov
+                    border: "3px solid #8e24aa",
                     padding: "8px",
                     borderRadius: "8px",
-                    backgroundColor: "#fff", // Fundal alb pentru a face bordura vizibilă
+                    backgroundColor: "#fff",
                 }}
 >
                 <span style={{ paddingRight: "10px" }}>
@@ -513,7 +494,7 @@ const TeamPage = () => {
                 </span>
                 <Fab
                     color="secondary"
-                    onClick={openAddMemberDialog} // Deschide dialogul de adăugare
+                    onClick={openAddMemberDialog}
                 >
                     <AddIcon />
                 </Fab>
@@ -606,7 +587,7 @@ const TeamPage = () => {
                     <Button onClick={() => setDialogOpen(false)} color="secondary">
                         Anulează
                     </Button>
-                    <Button onClick={handleSaveMember} color="primary">
+                    <Button onClick={handleSaveMember} color="secondary">
                         {editMemberId ? "Salvează Modificările" : "Adaugă"}
                     </Button>
                 </DialogActions>
@@ -616,13 +597,13 @@ const TeamPage = () => {
                 style={{
                 position: "fixed",
                 bottom: "20px",
-                right: "20px", // Poziționează div-ul în dreapta
+                right: "20px",
                 display: "flex",
                 alignItems: "center",
-                border: "3px solid #8e24aa", // Bordura mov
+                border: "3px solid #8e24aa",
                 padding: "8px",
                 borderRadius: "8px",
-                backgroundColor: "#fff", // Fundal alb pentru a face bordura vizibilă
+                backgroundColor: "#fff",
             }}
 >
                 <span style={{ paddingRight: "10px" }}>
@@ -630,7 +611,7 @@ const TeamPage = () => {
                 </span>
                 <Fab
                     color="secondary"
-                    onClick={() => setDialogOpenMatch(true)} // Deschide dialogul pentru meciuri
+                    onClick={() => setDialogOpenMatch(true)}
                 >
                     <AddIcon />
                 </Fab>
@@ -689,7 +670,7 @@ const TeamPage = () => {
                     <Button onClick={() => setDialogOpenMatch(false)} color="secondary">
                         Anulează
                     </Button>
-                    <Button onClick={handleAddMatch} color="primary">
+                    <Button onClick={handleAddMatch} color="secondary">
                         Adaugă
                     </Button>
                 </DialogActions>
