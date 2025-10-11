@@ -151,84 +151,155 @@ const Dashboard = () => {
         }
     }, []);
 
-    return (
-        <div>
-            <AppBar position="static" style={{ backgroundColor: "purple" }}>
-                <Toolbar>
-                    <Typography variant="h6" style={{ flexGrow: 1 }}>
-                        Gestionarea Echipelor
-                    </Typography>
-                    <Button color="inherit" onClick={handleLogout}>
-                        Logout
-                    </Button>
-                </Toolbar>
-            </AppBar>
+return (
+  <div style={{ backgroundColor: "#f9fafb", minHeight: "100vh" }}>
+    {/* HEADER */}
+    <AppBar position="static" style={{ backgroundColor: "#800080" }}>
+      <Toolbar>
+        <Typography
+          variant="h6"
+          style={{ flexGrow: 1, fontWeight: "600", letterSpacing: "0.5px" }}
+        >
+          Gestionarea Echipelor
+        </Typography>
+        <Button color="inherit" onClick={handleLogout}>
+          LOGOUT
+        </Button>
+      </Toolbar>
+    </AppBar>
 
-            <div
-                style={{
-                    padding: "20px",
-                    margin: "20px",
-                    border: "3px solid purple",
-                    borderRadius: "8px",
-                }}
-            >
-                <Typography variant="h4" gutterBottom>
-                    Adaugă o echipă
-                </Typography>
-                <TextField
-                    fullWidth
-                    label="Numele echipei"
-                    value={teamName}
-                    onChange={(e) => setTeamName(e.target.value)}
-                    style={{ marginBottom: "10px" }}
-                />
-                <TextField
-                    fullWidth
-                    label="Sport"
-                    value={teamSport}
-                    onChange={(e) => setTeamSport(e.target.value)}
-                    style={{ marginBottom: "10px" }}
-                />
-                <Button variant="contained" style={{ backgroundColor: "purple", color: "white" }} onClick={handleAddTeam}>
-                    Salvează Echipa
-                </Button>
-            </div>
+    {/* FORM CARD */}
+    <div
+      style={{
+        maxWidth: "600px",
+        margin: "40px auto",
+        backgroundColor: "white",
+        borderRadius: "16px",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
+        padding: "40px",
+        textAlign: "center",
+      }}
+    >
+      <Typography
+        variant="h4"
+        gutterBottom
+        style={{ color: "#800080", fontWeight: "700" }}
+      >
+        Adaugă o echipă
+      </Typography>
 
-            <div
+      <TextField
+        fullWidth
+        label="Numele echipei"
+        variant="outlined"
+        value={teamName}
+        onChange={(e) => setTeamName(e.target.value)}
+        style={{ marginBottom: "16px" }}
+      />
+      <TextField
+        fullWidth
+        label="Sport"
+        variant="outlined"
+        value={teamSport}
+        onChange={(e) => setTeamSport(e.target.value)}
+        style={{ marginBottom: "24px" }}
+      />
+      <Button
+        variant="contained"
+        onClick={handleAddTeam}
+        style={{
+          backgroundColor: "#800080",
+          color: "white",
+          fontWeight: "600",
+          padding: "10px 24px",
+          borderRadius: "8px",
+        }}
+      >
+        SALVEAZĂ ECHIPA
+      </Button>
+    </div>
+
+    {/* TEAMS SECTION */}
+    <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "0 20px" }}>
+      <Typography
+        variant="h4"
+        gutterBottom
+        style={{ color: "#800080", fontWeight: "700", marginBottom: "20px" }}
+      >
+        Echipele Tale
+      </Typography>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+          gap: "20px",
+        }}
+      >
+        {teams.map((team) => (
+          <Card
+            key={team.id}
+            style={{
+              backgroundColor: "#800080",
+              color: "white",
+              borderRadius: "12px",
+              boxShadow: "0 4px 10px rgba(0,0,0,0.15)",
+              marginBottom: "32px",
+              transition: "transform 0.2s ease",
+            }}
+          >
+            <CardContent>
+              <Typography
+                variant="h5"
                 style={{
-                    padding: "20px",
-                    margin: "20px",
-                    border: "3px solid purple",
-                    borderRadius: "8px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  marginBottom: "8px",
+                  transition: "color 0.2s ease, transform 0.2s ease",
                 }}
-            >
-                <Typography variant="h4" gutterBottom >
-                    Echipele Tale
-                </Typography>
-                <div style={{ display: "grid", gap: "16px", gridTemplateColumns: "1fr 1fr" }}>
-                    {teams.map((team) => (
-                        <Card key={team.id} variant="outlined" style={{ padding: "16px", backgroundColor : "purple" }}>
-                            <CardContent>
-                                <Typography
-                                    variant="h5"
-                                    style={{ cursor: "pointer", color: "white" }}
-                                    onClick={() => handleTeamClick(team.id)}
-                                >
-                                    {team.name}
-                                </Typography>
-                                <Typography variant="body2" color="white">
-                                    Sport: {team.sport}
-                                </Typography>
-                                <IconButton onClick={() => handleDeleteTeam(team.id)} color="white">
-                                    <DeleteIcon />
-                                </IconButton>
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
+                onClick={() => handleTeamClick(team.id)}
+                onMouseEnter={(e) => {
+                  e.target.style.color = "white";
+                  e.target.style.transform = "scale(1.03)";
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.color = "white";
+                  e.target.style.transform = "scale(1)";
+                }}
+              >
+                {team.name}
+              </Typography>
+
+              <Typography variant="body2" style={{ marginBottom: "8px" }}>
+                Sport: {team.sport}
+              </Typography>
+
+              <IconButton
+                onClick={() => handleDeleteTeam(team.id)}
+                style={{
+                  color: "white",
+                  transition: "background-color 0.2s ease, transform 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.2)";
+                  e.currentTarget.style.transform = "scale(1.1)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                  e.currentTarget.style.transform = "scale(1)";
+                }}
+              >
+                <DeleteIcon />
+              </IconButton>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
 };
 
 export default Dashboard;

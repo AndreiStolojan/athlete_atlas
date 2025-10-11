@@ -49,11 +49,14 @@ const TeamPage = () => {
     const [matches, setMatches] = useState([]);
     const [view, setView] = useState("none"); // none, members, matches
 
+    const [newSport, setNewSport] = useState("");
     const [dialogOpenMatch, setDialogOpenMatch] = useState(false);
     const [newMatchDate, setNewMatchDate] = useState(""); 
     const [newOpponentTeam, setNewOpponentTeam] = useState(""); 
     const [newGoalsFor, setNewGoalsFor] = useState(0);
     const [newGoalsAgainst, setNewGoalsAgainst] = useState(0);
+    const [newSets, setNewSets] = useState([]);          // lista efectivă de seturi (ex: [[25,20],[22,25],[25,18]])
+    const [newSetsInput, setNewSetsInput] = useState("");
     const [newMatchFile, setNewMatchFile] = useState(null); 
 
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -77,13 +80,18 @@ const TeamPage = () => {
         }
 
         const teamDoc = await getDoc(doc(db, "teams", teamId));
-        setTeam({ id: teamDoc.id, ...teamDoc.data() });
+        const teamData = { id: teamDoc.id, ...teamDoc.data() };
+        setTeam(teamData);
 
         const membersSnapshot = await getDocs(collection(db, `teams/${teamId}/members`));
         setMembers(membersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
 
         const matchesSnapshot = await getDocs(collection(db, `teams/${teamId}/matches`));
         setMatches(matchesSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+
+        if (teamData.sport) {
+            setNewSport(teamData.sport.toLowerCase());
+      }
     };
 
     useEffect(() => {
@@ -147,54 +155,95 @@ const TeamPage = () => {
     };
     
     
-    const handleAddMatch = async () => {
-        if (!teamId || !newOpponentTeam.trim() || !newMatchDate) {
-            return alert("Completați toate câmpurile pentru a adăuga meciul!");
-        }
-    
-        const today = new Date();
-        const selectedDate = new Date(newMatchDate);
-        if (selectedDate > today) {
-            return alert("Data meciului nu poate fi in viitor!");
-        }
-    
-        try {
-            let pdfUrl = "";
-    
-            if (!newMatchFile) {
-                return alert("Nu ați selectat niciun fișier pentru meci!");
-            }
+const handleAddMatch = async () => {
+    if (!teamId || !newOpponentTeam.trim() || !newMatchDate) {
+        return alert("Completați toate câmpurile pentru a adăuga meciul!");
+    }
 
+    const today = new Date();
+    const selectedDate = new Date(newMatchDate);
+    if (selectedDate > today) {
+        return alert("Data meciului nu poate fi în viitor!");
+    }
+
+    try {
+        let pdfUrl = "";
+
+        // Upload PDF doar dacă e adăugat
+        if (newMatchFile) {
             const fileExtension = newMatchFile.name.split('.').pop().toLowerCase();
             if (fileExtension !== "pdf") {
-                return alert("Doar fisiere de tip PDF sunt permise!");
+                return alert("Doar fișiere de tip PDF sunt permise!");
             }
 
-
-    
-            if (newMatchFile) {
-                const storageRef = ref(storage, `matches/${teamId}/${newMatchFile.name}`);
-                await uploadBytes(storageRef, newMatchFile);
-                pdfUrl = await getDownloadURL(storageRef);
-            }
-    
-            const matchesRef = collection(db, `teams/${teamId}/matches`);
-            await addDoc(matchesRef, {
-                date: newMatchDate,
-                opponentTeam: newOpponentTeam,
-                goalsFor: newGoalsFor,
-                goalsAgainst: newGoalsAgainst,
-                createdBy: auth.currentUser?.uid,
-                matchReportPdfUrl: pdfUrl,
-            });
-    
-            resetMatchForm();
-            fetchMatches(teamId);
-        } catch (error) {
-            console.error("Eroare la adăugarea meciului:", error.message);
-            alert("Eroare la salvarea meciului!");
+            const storageRef = ref(storage, `matches/${teamId}/${newMatchFile.name}`);
+            await uploadBytes(storageRef, newMatchFile);
+            pdfUrl = await getDownloadURL(storageRef);
         }
+
+    const parsedSets = newSetsInput
+        .split(",") // separăm seturile după virgulă
+        .map((setStr) => setStr.trim())
+        .map((setStr) => {
+            // regex pentru două numere între 0 și 99 separate de -
+            const match = setStr.match(/^(\d{1,2})-(\d{1,2})$/);
+            if (match) {
+                const num1 = Number(match[1]);
+                const num2 = Number(match[2]);
+                return [num1, num2];
+            }
+            return null; // set invalid
+        })
+        .filter(Boolean); // eliminăm seturile invalide
+
+    // Construim scoreData în funcție de sport
+    let scoreData = {};
+    const sport = newSport.toLowerCase();
+
+    switch (sport) {
+      case "fotbal":
+      case "handbal":
+      case "baschet":
+        scoreData = {
+          team1: Number(newGoalsFor) || 0,
+          team2: Number(newGoalsAgainst) || 0,
+        };
+        break;
+
+      case "volei":
+      case "tenis":
+        scoreData = {
+          sets: parsedSets,
+        };
+        break;
+
+      default:
+        scoreData = {
+          team1: Number(newGoalsFor) || 0,
+          team2: Number(newGoalsAgainst) || 0,
+        };
+    }
+
+    // Construim obiectul pentru Firestore
+    const matchData = {
+      sport,
+      date: newMatchDate,
+      opponentTeam: newOpponentTeam,
+      scoreData,
+      createdBy: auth.currentUser?.uid,
+      matchReportPdfUrl: pdfUrl || null,
     };
+
+    const matchesRef = collection(db, `teams/${teamId}/matches`);
+    await addDoc(matchesRef, matchData);
+
+    resetMatchForm();
+    fetchMatches(teamId);
+  } catch (error) {
+    console.error("Eroare la adăugarea meciului:", error.message);
+    alert("Eroare la salvarea meciului!");
+  }
+};
     
 
         const resetMatchForm = () => {
@@ -204,6 +253,34 @@ const TeamPage = () => {
             setNewGoalsAgainst(0);
             setNewMatchFile(null);
             setDialogOpenMatch(false);
+            setNewSets([]);
+            setNewSetsInput("");
+        };
+
+        const formatScore = (match) => {
+            const sport = match.sport?.toLowerCase();
+            const score = match.scoreData;
+
+            if (!score) return "-";
+
+            switch (sport) {
+                case "fotbal":
+                case "handbal":
+                case "baschet":
+                    return `${score.team1} - ${score.team2}`;
+
+                case "volei":
+                case "tenis":
+                if (score.sets && score.sets.length > 0) {
+                    return score.sets.map(set => `${set[0]}–${set[1]}`).join(" | ");
+                }
+                else {
+                    return "-";
+                }
+
+                default:
+                    return "-";
+            }
         };
     
         const handleDeleteMember = async (memberId) => {
@@ -344,7 +421,6 @@ const TeamPage = () => {
 
     return (
         <div>
-            
             <AppBar position="static" style={{ backgroundColor: "purple" }}>
                 <Toolbar>
                     <IconButton
@@ -362,11 +438,11 @@ const TeamPage = () => {
                     </Button>
                 </Toolbar>
             </AppBar>
-            <div style={{ padding: "20px", textAlign: "center"}}>
-                <Typography variant="h4" style={{ marginBottom: "10px"}}>
+            <div style={{ padding: "40px 20px", textAlign: "center" }}>
+                <Typography variant="h4" sx={{ fontWeight: 600, color: "#4a0072" }}>
                     {team.name}
                 </Typography>
-                <Typography variant="subtitle1" style={{ marginBottom: "20px" }}>
+                <Typography variant="subtitle1" sx={{ color: "#666" }}>
                     Sport: {team.sport}
                 </Typography>
 
@@ -448,7 +524,7 @@ const TeamPage = () => {
                                 <ListItem key={match.id}>
                                         <ListItemText
                                             primary={`Meci cu: ${match.opponentTeam} | Data: ${match.date}`}
-                                            secondary={`Scor: ${match.goalsFor} - ${match.goalsAgainst}`}
+                                            secondary={`Scor: ${formatScore(match)}`}
                                         />
                                         {match.matchReportPdfUrl && (
                                             <a
@@ -642,22 +718,62 @@ const TeamPage = () => {
                         value={newOpponentTeam}
                         onChange={(e) => setNewOpponentTeam(e.target.value)}
                     />
-                    <TextField
-                        fullWidth
-                        margin="dense"
-                        label="Goluri Date"
-                        type="number"
-                        value={newGoalsFor}
-                        onChange={(e) => setNewGoalsFor(Number(e.target.value))}
-                    />
-                    <TextField
-                        fullWidth
-                        margin="dense"
-                        label="Goluri Primite"
-                        type="number"
-                        value={newGoalsAgainst}
-                        onChange={(e) => setNewGoalsAgainst(Number(e.target.value))}
-                    />
+
+                    {["fotbal", "handbal"].includes(newSport) && (
+                        <>
+                            <TextField
+                                fullWidth
+                                margin="dense"
+                                label="Goluri Marcate"
+                                type="number"
+                                value={newGoalsFor}
+                                onChange={(e) => setNewGoalsFor(Number(e.target.value))}
+                            />
+                            <TextField
+                                fullWidth
+                                margin="dense"
+                                label="Goluri Primite"
+                                type="number"
+                                value={newGoalsAgainst}
+                                onChange={(e) => setNewGoalsAgainst(Number(e.target.value))}
+                            />
+                        </>
+                    )}
+
+                    {["baschet"].includes(newSport) && (
+                        <>
+                            <TextField
+                                fullWidth
+                                margin="dense"
+                                label="Puncte Înscrise"
+                                type="number"
+                                value={newGoalsFor}
+                                onChange={(e) => setNewGoalsFor(Number(e.target.value))}
+                            />
+                            <TextField
+                                fullWidth
+                                margin="dense"
+                                label="Puncte Primite"
+                                type="number"
+                                value={newGoalsAgainst}
+                                onChange={(e) => setNewGoalsAgainst(Number(e.target.value))}
+                            />
+                        </>
+                    )}
+
+                    {["volei", "tenis"].includes(newSport) && (
+                        <>
+                            <TextField
+                                fullWidth
+                                margin="dense"
+                                label="Seturi"
+                                type="text"
+                                value={newSetsInput}
+                                onChange={(e) => setNewSetsInput(e.target.value)}
+                            />
+                        </>
+                    )}
+
                     <label>Adaugă Raportul Meciului (PDF)</label>
                     <input
                         type="file"
