@@ -18,18 +18,18 @@ import { db } from "../firebase";
 import { auth, storage } from "../firebase";
 import { signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
-import { 
+import {
     AppBar,
     Toolbar,
     Typography,
-    Button, 
-    List, 
-    ListItem, 
-    ListItemText, 
-    IconButton, 
-    ListItemSecondaryAction, 
-    Fab, 
-    Checkbox, 
+    Button,
+    List,
+    ListItem,
+    ListItemText,
+    IconButton,
+    ListItemSecondaryAction,
+    Fab,
+    Checkbox,
     Dialog,
     DialogTitle,
     DialogContent,
@@ -37,6 +37,7 @@ import {
     TextField,
     FormControlLabel
 } from "@mui/material";
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { deleteObject } from "firebase/storage";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -53,13 +54,13 @@ const TeamPage = () => {
 
     const [newSport, setNewSport] = useState("");
     const [dialogOpenMatch, setDialogOpenMatch] = useState(false);
-    const [newMatchDate, setNewMatchDate] = useState(""); 
-    const [newOpponentTeam, setNewOpponentTeam] = useState(""); 
+    const [newMatchDate, setNewMatchDate] = useState("");
+    const [newOpponentTeam, setNewOpponentTeam] = useState("");
     const [newGoalsFor, setNewGoalsFor] = useState(0);
     const [newGoalsAgainst, setNewGoalsAgainst] = useState(0);
     const [newSets, setNewSets] = useState([]);          // lista efectivă de seturi (ex: [[25,20],[22,25],[25,18]])
     const [newSetsInput, setNewSetsInput] = useState("");
-    const [newMatchFile, setNewMatchFile] = useState(null); 
+    const [newMatchFile, setNewMatchFile] = useState(null);
 
     const [dialogOpen, setDialogOpen] = useState(false);
     const [newMemberFirstName, setNewMemberFirstName] = useState("");
@@ -72,6 +73,18 @@ const TeamPage = () => {
     const [newMemberCNP, setNewMemberCNP] = useState("");
     const [newMemberRegistrationNumber, setNewMemberRegistrationNumber] = useState("");
     const [newMemberMedicalVisaExpiry, setNewMemberMedicalVisaExpiry] = useState("");
+
+    const [wins, setWins] = useState(0);
+    const [losses, setLosses] = useState(0);
+    const [draws, setDraws] = useState(0);
+
+    const data = [
+        { name: "Câștigate", value: wins },
+        { name: "Pierdute", value: losses },
+        { name: "Egaluri", value: draws },
+    ];
+
+    const COLORS = ["#7E57C2", "#3F51B5", "#9FA8DA"];
 
     const fetchTeamData = async () => {
         const userId = auth.currentUser?.uid || "";
@@ -93,8 +106,29 @@ const TeamPage = () => {
 
         if (teamData.sport) {
             setNewSport(teamData.sport.toLowerCase());
-      }
+        }
     };
+
+    useEffect(() => {
+        let winCount = 0;
+        let lossCount = 0;
+        let drawCount = 0;
+
+        matches.forEach((match) => {
+            const { scoreData } = match;
+
+            const { team1, team2 } = scoreData || {};
+            if (team1 > team2) winCount++;
+            else if (team1 < team2) lossCount++;
+            else drawCount++;
+
+        });
+
+        setWins(winCount);
+        setLosses(lossCount);
+        setDraws(drawCount);
+
+    }, [matches]);
 
     useEffect(() => {
         fetchTeamData();
@@ -109,14 +143,14 @@ const TeamPage = () => {
             alert("Nu există o echipă selectată!");
             return;
         }
-    
+
         try {
             const teamDoc = await getDoc(doc(db, "teams", teamId));
             if (teamDoc.data().createdBy !== auth.currentUser?.uid) {
                 alert("Nu aveți permisiuni să ștergeți acest meci!");
                 return;
             }
-    
+
             if (matchPdfUrl) {
                 try {
                     const decodedUrl = decodeURIComponent(matchPdfUrl);
@@ -130,10 +164,10 @@ const TeamPage = () => {
                     console.warn("Fișierul nu a fost găsit în Firebase Storage:", fileError.message);
                 }
             }
-    
+
             const matchRef = doc(db, `teams/${teamId}/matches/${matchId}`);
             await deleteDoc(matchRef);
-    
+
             alert("Meciul a fost șters cu succes!");
             fetchMatches(teamId);
         } catch (error) {
@@ -141,8 +175,8 @@ const TeamPage = () => {
             alert(`Eroare: ${error.message}`);
         }
     };
-    
-    
+
+
     const fetchMatches = async (teamId) => {
         try {
             const matchesSnapshot = await getDocs(collection(db, `teams/${teamId}/matches`));
@@ -155,278 +189,267 @@ const TeamPage = () => {
             console.error("Eroare la obținerea meciurilor:", error.message);
         }
     };
-    
-    
-const handleAddMatch = async () => {
-    if (!teamId || !newOpponentTeam.trim() || !newMatchDate) {
-        return alert("Completați toate câmpurile pentru a adăuga meciul!");
-    }
 
-    const today = new Date();
-    const selectedDate = new Date(newMatchDate);
-    if (selectedDate > today) {
-        return alert("Data meciului nu poate fi în viitor!");
-    }
 
-    try {
-        let pdfUrl = "";
-
-        // Upload PDF doar dacă e adăugat
-        if (newMatchFile) {
-            const fileExtension = newMatchFile.name.split('.').pop().toLowerCase();
-            if (fileExtension !== "pdf") {
-                return alert("Doar fișiere de tip PDF sunt permise!");
-            }
-
-            const storageRef = ref(storage, `matches/${teamId}/${newMatchFile.name}`);
-            await uploadBytes(storageRef, newMatchFile);
-            pdfUrl = await getDownloadURL(storageRef);
+    const handleAddMatch = async () => {
+        if (!teamId || !newOpponentTeam.trim() || !newMatchDate) {
+            return alert("Completați toate câmpurile pentru a adăuga meciul!");
         }
 
-    const parsedSets = newSetsInput
-        .split(",") // separăm seturile după virgulă
-        .map((setStr) => setStr.trim())
-        .map((setStr) => {
-            // regex pentru două numere între 0 și 99 separate de -
-            const match = setStr.match(/^(\d{1,2})-(\d{1,2})$/);
-            if (match) {
-                const num1 = Number(match[1]);
-                const num2 = Number(match[2]);
-                return [num1, num2];
+        const today = new Date();
+        const selectedDate = new Date(newMatchDate);
+        if (selectedDate > today) {
+            return alert("Data meciului nu poate fi în viitor!");
+        }
+
+        try {
+            let pdfUrl = "";
+
+            // Upload PDF doar dacă e adăugat
+            if (newMatchFile) {
+                const fileExtension = newMatchFile.name.split('.').pop().toLowerCase();
+                if (fileExtension !== "pdf") {
+                    return alert("Doar fișiere de tip PDF sunt permise!");
+                }
+
+                const storageRef = ref(storage, `matches/${teamId}/${newMatchFile.name}`);
+                await uploadBytes(storageRef, newMatchFile);
+                pdfUrl = await getDownloadURL(storageRef);
             }
-            return null; // set invalid
-        })
-        .filter(Boolean); // eliminăm seturile invalide
 
-    // Construim scoreData în funcție de sport
-    let scoreData = {};
-    const sport = newSport.toLowerCase();
+            const parsedSets = newSetsInput
+                .split(",") // separăm seturile după virgulă
+                .map((setStr) => setStr.trim())
+                .map((setStr) => {
+                    // regex pentru două numere între 0 și 99 separate de -
+                    const match = setStr.match(/^(\d{1,2})-(\d{1,2})$/);
+                    if (match) {
+                        const num1 = Number(match[1]);
+                        const num2 = Number(match[2]);
+                        return [num1, num2];
+                    }
+                    return null; // set invalid
+                })
+                .filter(Boolean); // eliminăm seturile invalide
 
-    switch (sport) {
-      case "fotbal":
-      case "handbal":
-      case "baschet":
-        scoreData = {
-          team1: Number(newGoalsFor) || 0,
-          team2: Number(newGoalsAgainst) || 0,
-        };
-        break;
-
-      case "volei":
-      case "tenis":
-        scoreData = {
-          sets: parsedSets,
-        };
-        break;
-
-      default:
-        scoreData = {
-          team1: Number(newGoalsFor) || 0,
-          team2: Number(newGoalsAgainst) || 0,
-        };
-    }
-
-    // Construim obiectul pentru Firestore
-    const matchData = {
-      sport,
-      date: newMatchDate,
-      opponentTeam: newOpponentTeam,
-      scoreData,
-      createdBy: auth.currentUser?.uid,
-      matchReportPdfUrl: pdfUrl || null,
-    };
-
-    const matchesRef = collection(db, `teams/${teamId}/matches`);
-    await addDoc(matchesRef, matchData);
-
-    resetMatchForm();
-    fetchMatches(teamId);
-  } catch (error) {
-    console.error("Eroare la adăugarea meciului:", error.message);
-    alert("Eroare la salvarea meciului!");
-  }
-};
-    
-
-        const resetMatchForm = () => {
-            setNewMatchDate("");
-            setNewOpponentTeam("");
-            setNewGoalsFor(0);
-            setNewGoalsAgainst(0);
-            setNewMatchFile(null);
-            setDialogOpenMatch(false);
-            setNewSets([]);
-            setNewSetsInput("");
-        };
-
-        const formatScore = (match) => {
-            const sport = match.sport?.toLowerCase();
-            const score = match.scoreData;
-
-            if (!score) return "-";
+            // Construim scoreData în funcție de sport
+            let scoreData = {};
+            const sport = newSport.toLowerCase();
 
             switch (sport) {
                 case "fotbal":
                 case "handbal":
                 case "baschet":
-                    return `${score.team1} - ${score.team2}`;
-
                 case "volei":
                 case "tenis":
-                if (score.sets && score.sets.length > 0) {
-                    return score.sets.map(set => `${set[0]}–${set[1]}`).join(" | ");
-                }
-                else {
-                    return "-";
-                }
+                    scoreData = {
+                        team1: Number(newGoalsFor) || 0,
+                        team2: Number(newGoalsAgainst) || 0,
+                    };
+                    break;
+
 
                 default:
-                    return "-";
+                    scoreData = {
+                        team1: Number(newGoalsFor) || 0,
+                        team2: Number(newGoalsAgainst) || 0,
+                    };
             }
-        };
-    
-        const handleDeleteMember = async (memberId) => {
-            try {
-                const memberRef = doc(db, `teams/${teamId}/members/${memberId}`);
-                const memberDoc = await getDoc(memberRef);
-        
-                const teamRef = doc(db, "teams", teamId);
-                const teamDoc = await getDoc(teamRef);
-                if (teamDoc.data().createdBy !== auth.currentUser?.uid) {
-                    alert("Nu aveți permisiuni să ștergeți acest membru!");
-                    return;
-                }
-        
-                await deleteDoc(memberRef);
 
-                alert("Membrul a fost șters cu succes!");
-                const membersSnapshot = await getDocs(collection(db, `teams/${teamId}/members`));
-                setMembers(membersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-        
-                
-            } catch (error) {
-                console.error("Eroare la ștergerea membrului:", error.message);
-                alert(`Eroare: ${error.message}`);
+            // Construim obiectul pentru Firestore
+            const matchData = {
+                sport,
+                date: newMatchDate,
+                opponentTeam: newOpponentTeam,
+                scoreData,
+                createdBy: auth.currentUser?.uid,
+                matchReportPdfUrl: pdfUrl || null,
+            };
+
+            const matchesRef = collection(db, `teams/${teamId}/matches`);
+            await addDoc(matchesRef, matchData);
+
+            resetMatchForm();
+            fetchMatches(teamId);
+        } catch (error) {
+            console.error("Eroare la adăugarea meciului:", error.message);
+            alert("Eroare la salvarea meciului!");
+        }
+    };
+
+
+    const resetMatchForm = () => {
+        setNewMatchDate("");
+        setNewOpponentTeam("");
+        setNewGoalsFor(0);
+        setNewGoalsAgainst(0);
+        setNewMatchFile(null);
+        setDialogOpenMatch(false);
+        setNewSets([]);
+        setNewSetsInput("");
+    };
+
+    const formatScore = (match) => {
+        const sport = match.sport?.toLowerCase();
+        const score = match.scoreData;
+
+        if (!score) return "-";
+
+        switch (sport) {
+            case "fotbal":
+            case "handbal":
+            case "baschet":
+            case "volei":
+            case "tenis":
+                return `${score.team1} - ${score.team2}`;
+            default:
+                return `${score.team1} - ${score.team2}`;
+        }
+    };
+
+
+    const handleDeleteMember = async (memberId) => {
+        try {
+            const memberRef = doc(db, `teams/${teamId}/members/${memberId}`);
+            const memberDoc = await getDoc(memberRef);
+
+            const teamRef = doc(db, "teams", teamId);
+            const teamDoc = await getDoc(teamRef);
+            if (teamDoc.data().createdBy !== auth.currentUser?.uid) {
+                alert("Nu aveți permisiuni să ștergeți acest membru!");
+                return;
             }
-        };
-        
-        const openAddMemberDialog = () => {
+
+            await deleteDoc(memberRef);
+
+            alert("Membrul a fost șters cu succes!");
+            const membersSnapshot = await getDocs(collection(db, `teams/${teamId}/members`));
+            setMembers(membersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+
+
+        } catch (error) {
+            console.error("Eroare la ștergerea membrului:", error.message);
+            alert(`Eroare: ${error.message}`);
+        }
+    };
+
+    const openAddMemberDialog = () => {
+        resetMemberForm();
+        setDialogOpen(true);
+    };
+
+    const startEditMember = (member) => {
+        setEditMemberId(member.id);
+        setNewMemberFirstName(member.firstName);
+        setNewMemberLastName(member.lastName);
+        setNewMemberFatherInitial(member.fatherInitial);
+        setNewMemberBirthDate(member.birthDate);
+        setNewMemberUniversity(member.university || "");
+        setNewMemberIsActive(member.isActive);
+        setNewMemberCNP(member.cnp || "");
+        setNewMemberRegistrationNumber(member.registrationNumber || "");
+        setNewMemberMedicalVisaExpiry(member.medicalVisaExpiry || "");
+        setDialogOpen(true);
+    };
+
+    const handleSaveMember = async () => {
+        const teamDoc = await getDoc(doc(db, "teams", teamId));
+        const teamData = teamDoc.data();
+
+        if (teamData.createdBy !== auth.currentUser?.uid) {
+            alert("Nu aveți permisiuni să editați membri acestei echipe!");
+            return;
+        }
+
+        if (!newMemberFirstName.trim() || !newMemberLastName.trim() || !newMemberFatherInitial.trim() || !newMemberBirthDate.trim() || !newMemberCNP.trim()) {
+            alert("Completați toate informațiile despre membru!");
+            return;
+        }
+
+        const birthDate = new Date(newMemberBirthDate);
+        const today = new Date();
+        if (birthDate > today) {
+            alert("Data nașterii nu poate fi în viitor!");
+            return;
+        }
+
+        if (!/^\d{13}$/.test(newMemberCNP)) {
+            alert("CNP-ul trebuie să conțină exact 13 cifre!");
+            return;
+        }
+
+        try {
+            if (editMemberId) {
+                const memberRef = doc(db, `teams/${teamId}/members/${editMemberId}`);
+                await updateDoc(memberRef, {
+                    firstName: newMemberFirstName,
+                    lastName: newMemberLastName,
+                    fatherInitial: newMemberFatherInitial,
+                    birthDate: newMemberBirthDate,
+                    university: newMemberUniversity || null,
+                    isActive: newMemberIsActive,
+                    cnp: newMemberCNP,
+                    registrationNumber: newMemberRegistrationNumber,
+                    medicalVisaExpiry: newMemberMedicalVisaExpiry,
+                });
+            } else {
+                const membersRef = collection(db, `teams/${teamId}/members`);
+                await addDoc(membersRef, {
+                    firstName: newMemberFirstName,
+                    lastName: newMemberLastName,
+                    fatherInitial: newMemberFatherInitial,
+                    birthDate: newMemberBirthDate,
+                    university: newMemberUniversity || null,
+                    isActive: newMemberIsActive,
+                    cnp: newMemberCNP,
+                    registrationNumber: newMemberRegistrationNumber,
+                    medicalVisaExpiry: newMemberMedicalVisaExpiry,
+                    createdBy: auth.currentUser.uid,
+                });
+            }
+
             resetMemberForm();
-            setDialogOpen(true);
-        };
-    
-        const startEditMember = (member) => {
-            setEditMemberId(member.id);
-            setNewMemberFirstName(member.firstName);
-            setNewMemberLastName(member.lastName);
-            setNewMemberFatherInitial(member.fatherInitial);
-            setNewMemberBirthDate(member.birthDate);
-            setNewMemberUniversity(member.university || "");
-            setNewMemberIsActive(member.isActive);
-            setNewMemberCNP(member.cnp || "");
-            setNewMemberRegistrationNumber(member.registrationNumber || "");
-            setNewMemberMedicalVisaExpiry(member.medicalVisaExpiry || "");
-            setDialogOpen(true);
-        };
-    
-        const handleSaveMember = async () => {
+            const membersSnapshot = await getDocs(collection(db, `teams/${teamId}/members`));
+            setMembers(membersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        } catch (error) {
+            console.error("Eroare la salvarea membrului:", error.message);
+        }
+    };
+
+
+    const resetMemberForm = () => {
+        setNewMemberFirstName("");
+        setNewMemberLastName("");
+        setNewMemberFatherInitial("");
+        setNewMemberBirthDate("");
+        setNewMemberUniversity("");
+        setNewMemberIsActive(false);
+        setNewMemberCNP("");
+        setNewMemberRegistrationNumber("");
+        setNewMemberMedicalVisaExpiry("");
+        setEditMemberId(null);
+        setDialogOpen(false);
+    };
+
+    const handleImportExcel = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const validExtensions = ["xlsx", "xls"];
+        const fileExtension = file.name.split(".").pop().toLowerCase();
+
+        if (!validExtensions.includes(fileExtension)) {
+            alert("Fișier invalid! Te rog selectează un fișier Excel (.xlsx sau .xls).");
+            event.target.value = ""; // reset inputul
+            return;
+        }
+
+        try {
             const teamDoc = await getDoc(doc(db, "teams", teamId));
             const teamData = teamDoc.data();
-        
-            if (teamData.createdBy !== auth.currentUser?.uid) {
-                alert("Nu aveți permisiuni să editați membrii acestei echipe!");
-                return;
-            }
-        
-            if (!newMemberFirstName.trim() || !newMemberLastName.trim() || !newMemberFatherInitial.trim() || !newMemberBirthDate.trim() || !newMemberCNP.trim()) {
-                alert("Completați toate informațiile despre membru!");
-                return;
-            }
-        
-            const birthDate = new Date(newMemberBirthDate);
-            const today = new Date();
-            if (birthDate > today) {
-                alert("Data nașterii nu poate fi în viitor!");
-                return;
-            }
-        
-            if (!/^\d{13}$/.test(newMemberCNP)) {
-                alert("CNP-ul trebuie să conțină exact 13 cifre!");
-                return;
-            }
-        
-            try {
-                if (editMemberId) {
-                    const memberRef = doc(db, `teams/${teamId}/members/${editMemberId}`);
-                    await updateDoc(memberRef, {
-                        firstName: newMemberFirstName,
-                        lastName: newMemberLastName,
-                        fatherInitial: newMemberFatherInitial,
-                        birthDate: newMemberBirthDate,
-                        university: newMemberUniversity || null,
-                        isActive: newMemberIsActive,
-                        cnp: newMemberCNP,
-                        registrationNumber: newMemberRegistrationNumber,
-                        medicalVisaExpiry: newMemberMedicalVisaExpiry,
-                    });
-                } else {
-                    const membersRef = collection(db, `teams/${teamId}/members`);
-                    await addDoc(membersRef, {
-                        firstName: newMemberFirstName,
-                        lastName: newMemberLastName,
-                        fatherInitial: newMemberFatherInitial,
-                        birthDate: newMemberBirthDate,
-                        university: newMemberUniversity || null,
-                        isActive: newMemberIsActive,
-                        cnp: newMemberCNP,
-                        registrationNumber: newMemberRegistrationNumber,
-                        medicalVisaExpiry: newMemberMedicalVisaExpiry,
-                        createdBy: auth.currentUser.uid,
-                    });
-                }
-        
-                resetMemberForm();
-                const membersSnapshot = await getDocs(collection(db, `teams/${teamId}/members`));
-                setMembers(membersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-            } catch (error) {
-                console.error("Eroare la salvarea membrului:", error.message);
-            }
-        };
-        
-    
-        const resetMemberForm = () => {
-            setNewMemberFirstName("");
-            setNewMemberLastName("");
-            setNewMemberFatherInitial("");
-            setNewMemberBirthDate("");
-            setNewMemberUniversity("");
-            setNewMemberIsActive(false);
-            setNewMemberCNP("");
-            setNewMemberRegistrationNumber("");
-            setNewMemberMedicalVisaExpiry("");
-            setEditMemberId(null);
-            setDialogOpen(false);
-        };
-
-        const handleImportExcel = async (event) => {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const validExtensions = ["xlsx", "xls"];
-            const fileExtension = file.name.split(".").pop().toLowerCase();
-
-            if (!validExtensions.includes(fileExtension)) {
-                alert("Fișier invalid! Te rog selectează un fișier Excel (.xlsx sau .xls).");
-                event.target.value = ""; // reset inputul
-                return;
-            }
-
-            try {
-                const teamDoc = await getDoc(doc(db, "teams", teamId));
-                const teamData = teamDoc.data();
 
             if (teamData.createdBy !== auth.currentUser?.uid) {
-                alert("Nu aveți permisiuni să editați membrii acestei echipe!");
+                alert("Nu aveți permisiuni să editați membri acestei echipe!");
                 return;
             }
 
@@ -496,9 +519,10 @@ const handleAddMatch = async () => {
                 console.warn("Erori import:", errors);
                 alert(`Importul s-a finalizat cu erori.\nVerifică consola pentru detalii.`);
             }
-            } catch (error) {
-        console.error("Eroare la import:", error);
-        alert("A apărut o eroare la importul fișierului Excel.");
+        } catch (error) {
+            console.error("Eroare la import:", error);
+            alert("A apărut o eroare la importul fișierului Excel.");
+            event.target.value = "";
         }
     };
 
@@ -542,7 +566,7 @@ const handleAddMatch = async () => {
                     Sport: {team.sport}
                 </Typography>
 
-            
+
                 <div style={{ marginBottom: "40px" }}>
                     <Button
                         variant="contained"
@@ -550,7 +574,7 @@ const handleAddMatch = async () => {
                         style={{ marginRight: "10px" }}
                         onClick={() => setView("members")}
                     >
-                        Vezi Membrii
+                        Vezi Membri
                     </Button>
                     <Button
                         variant="contained"
@@ -563,22 +587,28 @@ const handleAddMatch = async () => {
 
                 {view === "members" && (
                     <div style={{
-                        padding: "20px",
-                        margin: "20px",
-                        border: "3px solid purple",
-                        borderRadius: "8px",
+                        padding: "12px 16px",
+                        margin: "16px auto",
+                        border: "1px solid #d1c4e9",
+                        borderRadius: "12px",
+                        backgroundColor: "#ffffff",
+                        boxShadow: "0 4px 10px rgba(0, 0, 0, 0.06)",
+                        maxWidth: "700px",
+                        fontFamily: "Arial, sans-serif",
+                        fontSize: "14px",
+                        color: "#4a148c",
+                        transition: "transform 0.2s, box-shadow 0.2s",
                     }}>
                         <Typography variant="h5" style={{ marginBottom: "10px" }}>
-                            Membrii Echipei
+                            Membri Echipei
                         </Typography>
                         <List>
                             {members.map((member) => (
                                 <ListItem key={member.id}>
                                     <ListItemText
                                         primary={`${member.firstName} ${member.lastName}`}
-                                        secondary={`Universitate: ${member.university || "Fără universitate"} | ${
-                                            member.isActive ? "Activ" : "Inactiv"
-                                        }
+                                        secondary={`Universitate: ${member.university || "Fără universitate"} | ${member.isActive ? "Activ" : "Inactiv"
+                                            }
                 | CNP: ${member.cnp || "N/A"}
                 | Nr. Legitimație: ${member.registrationNumber || "N/A"}
                 | Expirare Viză Medicală: ${member.medicalVisaExpiry || "N/A"}`}
@@ -604,41 +634,48 @@ const handleAddMatch = async () => {
                         </List>
 
                         <div
-      style={{
-        marginTop: "30px",
-        padding: "15px",
-        border: "2px dashed #888",
-        borderRadius: "10px",
-        background: "#fafafa",
-      }}
-    >
-      <Typography variant="h6" gutterBottom>
-        Importă membri din fișier Excel
-      </Typography>
-      <input
-        type="file"
-        accept=".xlsx, .xls"
-        onChange={handleImportExcel}
-        style={{ marginTop: "10px" }}
-      />
-      <Typography variant="body2" color="textSecondary" style={{ marginTop: "5px" }}>
-        Format acceptat: .xlsx sau .xls <br />
-        Coloane necesare: Nume, Prenume, Inițiala tatălui, Data nașterii, CNP,
-        Universitate, Număr legitimație, Expirare viză medicală, Activ
-      </Typography>
-    </div>
-  
+                            style={{
+                                marginTop: "30px",
+                                padding: "15px",
+                                border: "2px dashed #888",
+                                borderRadius: "10px",
+                                background: "#fafafa",
+                            }}
+                        >
+                            <Typography variant="h6" gutterBottom>
+                                Importă membri din fișier Excel
+                            </Typography>
+                            <input
+                                type="file"
+                                accept=".xlsx, .xls"
+                                onChange={handleImportExcel}
+                                style={{ marginTop: "10px" }}
+                            />
+                            <Typography variant="body2" color="textSecondary" style={{ marginTop: "5px" }}>
+                                Format acceptat: .xlsx sau .xls <br />
+                                Coloane necesare: Nume, Prenume, Inițiala tatălui, Data nașterii, CNP,
+                                Universitate, Număr legitimație, Expirare viză medicală, Activ
+                            </Typography>
+                        </div>
+
                     </div>
 
-                    
+
                 )}
 
                 {view === "matches" && (
                     <div style={{
-                        padding: "20px",
-                        margin: "20px",
-                        border: "3px solid purple",
-                        borderRadius: "8px",
+                        padding: "12px 16px",
+                        margin: "16px auto",
+                        border: "1px solid #d1c4e9",
+                        borderRadius: "12px",
+                        backgroundColor: "#ffffff",
+                        boxShadow: "0 4px 10px rgba(0, 0, 0, 0.06)",
+                        maxWidth: "700px",
+                        fontFamily: "Arial, sans-serif",
+                        fontSize: "14px",
+                        color: "#4a148c",
+                        transition: "transform 0.2s, box-shadow 0.2s",
                     }}>
                         <Typography variant="h5" style={{ marginBottom: "10px" }}>
                             Meciuri
@@ -646,32 +683,70 @@ const handleAddMatch = async () => {
                         <List>
                             {matches.map((match) => (
                                 <ListItem key={match.id}>
-                                        <ListItemText
-                                            primary={`Meci cu: ${match.opponentTeam} | Data: ${match.date}`}
-                                            secondary={`Scor: ${formatScore(match)}`}
-                                        />
-                                        {match.matchReportPdfUrl && (
-                                            <a
-                                                href={match.matchReportPdfUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                style={{ marginLeft: "16px" }}
-                                            >
-                                                Vezi Raport (PDF)
-                                            </a>
-                                        )}
-                                        <ListItemSecondaryAction>
-                                            <IconButton
-                                                edge="end"
-                                                color="error"
-                                                onClick={() => handleDeleteMatch(match.id, match.matchReportPdfUrl)}
-                                            >
-                                                <DeleteIcon />
-                                            </IconButton>
-                                        </ListItemSecondaryAction>
-                                    </ListItem>
-                                ))}
+                                    <ListItemText
+                                        primary={`Meci cu: ${match.opponentTeam} | Data: ${match.date}`}
+                                        secondary={`Scor: ${formatScore(match)}`}
+                                    />
+                                    {match.matchReportPdfUrl && (
+                                        <a
+                                            href={match.matchReportPdfUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ marginLeft: "16px" }}
+                                        >
+                                            Vezi Raport (PDF)
+                                        </a>
+                                    )}
+                                    <ListItemSecondaryAction>
+                                        <IconButton
+                                            edge="end"
+                                            color="error"
+                                            onClick={() => handleDeleteMatch(match.id, match.matchReportPdfUrl)}
+                                        >
+                                            <DeleteIcon />
+                                        </IconButton>
+                                    </ListItemSecondaryAction>
+                                </ListItem>
+                            ))}
                         </List>
+
+                        <div style={{ width: "100%", height: 300, marginTop: 30 }}>
+                            <ResponsiveContainer>
+                                <PieChart>
+                                    <Pie
+                                        data={data}
+                                        dataKey="value"
+                                        nameKey="name"
+                                        cx="50%"
+                                        cy="50%"
+                                        outerRadius={100}
+                                        innerRadius={50}
+                                        paddingAngle={3}
+                                        labelLine={true}
+                                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                                    >
+                                        {data.map((entry, index) => (
+                                            <Cell
+                                                key={`cell-${index}`}
+                                                fill={COLORS[index % COLORS.length]}
+                                                stroke="#fff"
+                                                strokeWidth={2}
+                                            />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip
+                                        contentStyle={{
+                                            backgroundColor: "rgba(50, 50, 70, 0.9)",
+                                            borderRadius: "10px",
+                                            border: "none",
+                                            color: "#fff",
+                                        }}
+                                    />
+                                    <Legend verticalAlign="bottom" />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+
                     </div>
                 )}
             </div>
@@ -683,14 +758,20 @@ const handleAddMatch = async () => {
                     left: "20px",
                     display: "flex",
                     alignItems: "center",
-                    border: "3px solid #8e24aa",
-                    padding: "8px",
-                    borderRadius: "8px",
-                    backgroundColor: "#fff",
+                    gap: "10px",
+                    padding: "6px 12px",
+                    borderRadius: "12px",
+                    border: "1px solid #d1c4e9",
+                    backgroundColor: "#ffffff",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
+                    fontFamily: "Arial, sans-serif",
+                    fontSize: "14px",
+                    color: "#4a148c",
+                    transition: "transform 0.2s, box-shadow 0.2s",
                 }}
->
+            >
                 <span style={{ paddingRight: "10px" }}>
-                    Adaugă Membrii
+                    Adaugă Membri
                 </span>
                 <Fab
                     color="secondary"
@@ -795,17 +876,23 @@ const handleAddMatch = async () => {
 
             <div
                 style={{
-                position: "fixed",
-                bottom: "20px",
-                right: "20px",
-                display: "flex",
-                alignItems: "center",
-                border: "3px solid #8e24aa",
-                padding: "8px",
-                borderRadius: "8px",
-                backgroundColor: "#fff",
-            }}
->
+                    position: "fixed",
+                    bottom: "20px",
+                    right: "20px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "6px 12px",
+                    borderRadius: "12px",
+                    border: "1px solid #d1c4e9",
+                    backgroundColor: "#ffffff",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
+                    fontFamily: "Arial, sans-serif",
+                    fontSize: "14px",
+                    color: "#4a148c",
+                    transition: "transform 0.2s, box-shadow 0.2s",
+                }}
+            >
                 <span style={{ paddingRight: "10px" }}>
                     Adaugă Meci
                 </span>
@@ -850,6 +937,7 @@ const handleAddMatch = async () => {
                                 margin="dense"
                                 label="Goluri Marcate"
                                 type="number"
+                                inputProps={{ min: 0 }}
                                 value={newGoalsFor}
                                 onChange={(e) => setNewGoalsFor(Number(e.target.value))}
                             />
@@ -858,6 +946,7 @@ const handleAddMatch = async () => {
                                 margin="dense"
                                 label="Goluri Primite"
                                 type="number"
+                                inputProps={{ min: 0 }}
                                 value={newGoalsAgainst}
                                 onChange={(e) => setNewGoalsAgainst(Number(e.target.value))}
                             />
@@ -871,6 +960,7 @@ const handleAddMatch = async () => {
                                 margin="dense"
                                 label="Puncte Înscrise"
                                 type="number"
+                                inputProps={{ min: 0 }}
                                 value={newGoalsFor}
                                 onChange={(e) => setNewGoalsFor(Number(e.target.value))}
                             />
@@ -879,6 +969,7 @@ const handleAddMatch = async () => {
                                 margin="dense"
                                 label="Puncte Primite"
                                 type="number"
+                                inputProps={{ min: 0 }}
                                 value={newGoalsAgainst}
                                 onChange={(e) => setNewGoalsAgainst(Number(e.target.value))}
                             />
@@ -890,10 +981,20 @@ const handleAddMatch = async () => {
                             <TextField
                                 fullWidth
                                 margin="dense"
-                                label="Seturi"
-                                type="text"
-                                value={newSetsInput}
-                                onChange={(e) => setNewSetsInput(e.target.value)}
+                                label="Seturi Câştigate"
+                                type="number"
+                                inputProps={{ min: 0 }}
+                                value={newGoalsFor}
+                                onChange={(e) => setNewGoalsFor(Number(e.target.value))}
+                            />
+                            <TextField
+                                fullWidth
+                                margin="dense"
+                                label="Seturi Pierdute"
+                                type="number"
+                                inputProps={{ min: 0 }}
+                                value={newGoalsAgainst}
+                                onChange={(e) => setNewGoalsAgainst(Number(e.target.value))}
                             />
                         </>
                     )}
