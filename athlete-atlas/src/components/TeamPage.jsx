@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import * as XLSX from "xlsx";
 import { useParams } from "react-router-dom";
 import {
     collection,
@@ -9,7 +10,8 @@ import {
     updateDoc,
     query,
     where,
-    getDoc // Adăugăm importul pentru getDoc
+    getDoc,
+    arrayUnion
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db } from "../firebase";
@@ -406,6 +408,100 @@ const handleAddMatch = async () => {
             setDialogOpen(false);
         };
 
+        const handleImportExcel = async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const validExtensions = ["xlsx", "xls"];
+            const fileExtension = file.name.split(".").pop().toLowerCase();
+
+            if (!validExtensions.includes(fileExtension)) {
+                alert("Fișier invalid! Te rog selectează un fișier Excel (.xlsx sau .xls).");
+                event.target.value = ""; // reset inputul
+                return;
+            }
+
+            try {
+                const teamDoc = await getDoc(doc(db, "teams", teamId));
+                const teamData = teamDoc.data();
+
+            if (teamData.createdBy !== auth.currentUser?.uid) {
+                alert("Nu aveți permisiuni să editați membrii acestei echipe!");
+                return;
+            }
+
+            // Citim fișierul Excel
+            const data = await file.arrayBuffer();
+            const workbook = XLSX.read(data);
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const rows = XLSX.utils.sheet_to_json(sheet);
+
+            let addedCount = 0;
+            let errors = [];
+
+            for (const [index, row] of rows.entries()) {
+                const firstName = (row["Prenume"] || "").trim();
+                const lastName = (row["Nume"] || "").trim();
+                const fatherInitial = (row["Inițiala tatălui"] || "").trim();
+                const birthDateStr = (row["Data nașterii"] || "").trim();
+                const cnp = (row["CNP"] || "").trim();
+                const university = (row["Universitate"] || "").trim();
+                const registrationNumber = (row["Număr legitimație"] || "").trim();
+                const medicalVisaExpiry = (row["Expirare viză medicală"] || "").trim();
+                const isActive = row["Activ"]?.toString().toLowerCase() === "da";
+
+                // --- VALIDĂRI ---
+                if (!firstName || !lastName || !fatherInitial || !birthDateStr || !cnp) {
+                    errors.push(`Rândul ${index + 2}: Lipsesc informații obligatorii.`);
+                    continue;
+                }
+
+                const birthDate = new Date(birthDateStr);
+                const today = new Date();
+                if (isNaN(birthDate.getTime()) || birthDate > today) {
+                    errors.push(`Rândul ${index + 2}: Data nașterii invalidă.`);
+                    continue;
+                }
+
+                if (!/^\d{13}$/.test(cnp)) {
+                    errors.push(`Rândul ${index + 2}: CNP invalid (trebuie 13 cifre).`);
+                    continue;
+                }
+
+                const membersRef = collection(db, `teams/${teamId}/members`);
+                await addDoc(membersRef, {
+                    firstName,
+                    lastName,
+                    fatherInitial,
+                    birthDate: birthDateStr,
+                    university: university || null,
+                    isActive,
+                    cnp,
+                    registrationNumber,
+                    medicalVisaExpiry,
+                    createdBy: auth.currentUser.uid,
+                });
+
+                addedCount++;
+            }
+
+            // --- REZULTAT ---
+            if (addedCount > 0) {
+                alert(`Au fost adăugați ${addedCount} membri cu succes!`);
+                const membersSnapshot = await getDocs(collection(db, `teams/${teamId}/members`));
+                setMembers(membersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+            }
+            if (errors.length > 0) {
+                console.warn("Erori import:", errors);
+                alert(`Importul s-a finalizat cu erori.\nVerifică consola pentru detalii.`);
+            }
+            } catch (error) {
+        console.error("Eroare la import:", error);
+        alert("A apărut o eroare la importul fișierului Excel.");
+        }
+    };
+
     const handleLogout = async () => {
         try {
             await signOut(auth);
@@ -506,7 +602,35 @@ const handleAddMatch = async () => {
                                 </ListItem>
                             ))}
                         </List>
+
+                        <div
+      style={{
+        marginTop: "30px",
+        padding: "15px",
+        border: "2px dashed #888",
+        borderRadius: "10px",
+        background: "#fafafa",
+      }}
+    >
+      <Typography variant="h6" gutterBottom>
+        Importă membri din fișier Excel
+      </Typography>
+      <input
+        type="file"
+        accept=".xlsx, .xls"
+        onChange={handleImportExcel}
+        style={{ marginTop: "10px" }}
+      />
+      <Typography variant="body2" color="textSecondary" style={{ marginTop: "5px" }}>
+        Format acceptat: .xlsx sau .xls <br />
+        Coloane necesare: Nume, Prenume, Inițiala tatălui, Data nașterii, CNP,
+        Universitate, Număr legitimație, Expirare viză medicală, Activ
+      </Typography>
+    </div>
+  
                     </div>
+
+                    
                 )}
 
                 {view === "matches" && (
