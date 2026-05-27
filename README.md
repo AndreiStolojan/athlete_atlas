@@ -37,7 +37,6 @@ This is not presented as a deployed production system, but it is structured arou
 Install dependencies:
 
 ```bash
-cd athlete-atlas
 npm install
 ```
 
